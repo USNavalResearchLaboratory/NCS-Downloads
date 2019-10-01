@@ -1,0 +1,366 @@
+	IVOX Version 3.0 Help
+
+INTRODUCTION
+
+	IVOX, the Interactive VOice eXchange application, provides
+	a telephone-like service via Internet Protocol (IP) based
+	Local Area (LAN) and Wide Area (WAN) data networks.  By
+	using voice compression algorithms, IVOX is able to
+	maintain low data rate communications (less than 2400
+	bits-per-second) with little impact on other computer data
+	communication services.  IVOX can be used in conjunction
+	with white-board, mission planning and/or video
+	conferencing applications. IVOX supports point-to-point and
+	IP-multicast (conferencing) voice communication.
+
+WORKSTATION CONFIGURATION
+
+	Versions of IVOX are currently available for Sun
+	SPARCStation, Silicon Graphics, Hewlett Packard, and Linux
+	workstations with built-in audio capability.  No additional
+	hardware is required.  However, the voice compression
+	algorithms used in IVOX can be sensitive to background noise
+	so it is recommended that a good quality directional 
+	microphone is used.  
+	
+	For workstations without built-in audio capability or to
+	offset the load imposed on the CPU by the voice compression
+	algorithms, IVOX allows for operation with an external
+	hardware compressor.  Currently, IVOX works with hardware
+	supported by Nova Engineering in Cincinnati, Ohio.
+
+IVOX HARDWARE CONFIGURATION
+
+The following configurations are planned for JWID 95:
+
+  Workstation with built-in audio: 
+	Connect the microphone into the microphone jack provided on
+	the workstations motherboard or audio card.  External speakers
+        or headphones offer superior sound quality over the speakers
+        built in to most workstations.  Headphones also can prevent 
+        audio "feedback" (echos) during full duplex conversation.
+
+  External Hardware Vocoder: 
+	    (Not yet implemented in Version 3.x of IVOX)
+	Some workstation do not have built-in audio capability or the user 
+	my wish to elimintate IVOX's load on the CPU to perform voice
+        compression.  To support IVOX operationin these cases, IVOX
+	will operate with an external vocoder (voice compression processor).
+	The external vocoder interfaces to the workstation via an RS-232 
+	serial port.  The external vocoder provides its own handset with
+	Push-to-Talk button. Connect the vocoder hardware to the
+	workstation serial port (Serial Port "B" is the default, see
+	"Advanced Users Section" for "-s" command line option to 
+	use a different port.), power it on and hit its hardware
+	reset button before launching  IVOX.  When IVOX launches, it
+	will "listen" to the serial port to detect if the vocoder is 
+	operating correctly.  If IVOX does not detect the external 
+	hardware vocoder, it will print a warning message and re-
+	attempt to detect the external vocoder.
+
+RUNNING IVOX
+
+	IVOX is launched with the command "ivox". There are some
+	command line options available when launching IVOX.  These
+	are explained in the "Advanced User Section" below. IVOX
+	uses the X-Window Motif library.  The shared libraries for
+	Motif are provided as part of the Silicon Graphics, Hewlett
+	Packard, and Solaris 2.4 operating systems.
+	
+	For security reasons, access to the workstation audio
+	device is sometimes limited to the user logged into the
+	console. As a result, special provisions may need to be
+	made if it is necessary that IVOX be run from a remote
+	terminal.
+	
+	SOLARIS 2.3 NOTE:  The LD_LIBRARY_PATH environment variable
+	must include paths to the Motif libraries. Sometimes IVOX
+	will display an error stating it can't load "libXm.so.3".
+	If this version of the library is unavailable, create a
+	link (or copy) of "libXm.so.2" and assign it the name
+	"libXm.so.3".  IVOX should then launch correctly.
+
+	SUNOS/LINUX NOTE:  Make sure that you have an XKeysymDB file 
+        appropriate for Motif and have the XKEYSYMDB environment
+        variable pointing at this file.
+
+ADJUSTING AUDIO LEVELS
+
+	The IVOX graphical user interface provides slider controls
+	to control the audio microphone and speaker levels.
+	
+  Microphone: 
+	The microphone level should be adjusted such that there are
+	consistent peaks into the "yellow" region of the level
+	meter.  To achieve best results with the low quality SUN
+	Microphone (or similar mic), use the lowest microphone
+	level setting and speak loudly if necessary. These
+	omnidirectional microphone are sensitive and tend to pick
+	up background noise which degrades the IVOX voice quality.
+	
+  Speaker: 
+	The speaker volume can be adjusted as required. If using an
+	external speaker system, the best quality is achieved with
+	the IVOX speaker level set to a higher level and adjusting
+	the external speaker system's volume level as appropriate.
+
+
+PLACING A CALL
+
+	IVOX supports unicast (point-to-point) and multicast
+	(group) calls.
+
+  Point-to-Point Calls
+
+	To initiate a point-to-point call, type the host name or 
+	dotted decimal IP address (e.g. itd.nrl.navy.mil or 128.60.2.2) 
+	of the remote party in the form:
+
+		name@address
+
+	The "name" field is optional.  Then click on the "CALL" button
+        to iniate the IVOX call. If your speaker is correctly connected 
+	and you have typed in a valid host name (or address), at this point
+	you should hear a ringing sound similar to when you place a
+	normal telephone call.  A short beep will notify you when
+	your call has been accepted.  A popup dialog will indicate call
+        failure with a message indicating the reason for failure.  When 
+	the call has been accepted, click the "PUSH-TO-TALK" button once 
+	and begin speaking.  Disengage the "PUSH-TO-TALK" button by clicking 
+	on it when your are finished speaking.
+
+	IVOX allows multiple simultaneous point- to-point calls.  This is not 
+	a very efficient form of conferencing but can work with limited size 
+	conferences where IP multicast communication is not possible.  IP 
+	multicast is the preferred method for conducting IVOX conferences.  
+	A future version of IVOX may provide for operation with a conference 
+	"hub" depending upon users' needs for conferencing in networks 
+	without IP multicast support. 
+
+	The IVOX "Session Display" provides a list of currently active and
+        recent sessions.  Each session displayed has controls for enabling 
+        and disabling transmit or receive operation for the session.  A 
+	control/status indicator is provided for RSVP operation.  If the
+        RSVP daemon process is running, the RSVP toggle can be depressed to
+        attempt network bandwidth reservations for the call.  The button 
+        blinks red while the reservation is pending and turns green when a 
+        receiver has made a reservation.  After the indicator turns green,
+        you may speak with guaranteed quality of service for voice packets
+        transmitted.  You may speak without the reservation in place, but
+        packets transmitted will have no service guarantees.
+
+	Also, instead of re-typing the name and address information for a
+        session/call already displayed, the user may select an exisiting session
+        by clicking on it.  Then the user can initiate or end the call for 
+        the selected session.  Calls can be terminated at any time by clicking 
+	on the "END CALL" button.  The remote party will be informed that 
+        the call has been ended.
+		
+
+  IP Multicast Calls
+
+	IVOX supports the capability to conduct "conference" calls/
+	sessions using IP multicast addresses. Any IP routers in the 
+	network path to other IVOX users must support multicast 
+	forwarding for this capability to work.  
+	(Ask your network manager about this capability).
+	
+	To join a multicast conference session in progress, simply type
+        the multicast address and port for the conference you wish to
+        join in the "Remote Party" text field in the form:
+
+		name@address:port/ttl
+
+	The "name" and "ttl" fields are optional.  IVOX's default "ttl"
+        is 32 network hops.  IVOX will very soon be compatible with the
+        Session Directory tools ("sdr") for managing multicast sessions.
+	After entering this information, press the "CALL" button to 
+        join the session in progress.  A multicast "session window" will
+        pop up displaying a list of other session members.
+
+	To initiate a new conference (without using "sdr"), first pick a 
+        multicast address and port.  Then type this information into the
+        "Remote Party" text edit field as described above and press the
+	"CALL" button to join the multicast group.  You may then "invite"
+        other users to join the session using the "Invite" text edit field
+        and button.  Type in the IP address for intended recipient of 
+        the invitation and press the "INVITE" button.  The invitation is
+        conducted using IP point-to-point addresses.  The remote user
+        (if running IVOX) will be notified and may accept or decline
+        the invitation to join the multicast session.
+
+RECEIVING A CALL
+
+	To receive calls, the IVOX application must be running. It
+	is acceptable to iconify the IVOX application on the
+	X-Windows desktop.  When a call request is received, IVOX
+	will produce a "ring" tone and apop-up dialog box will be
+        displayed.  The remote host name will be displayed and
+	"ACCEPT CALL" and "REJECT CALL" buttons will be presented.
+	Click the "ACCEPT CALL" button to answer the call.
+	
+	In IVOX's FULL-DUPLEX communication mode, your
+	"PUSH-TO-TALK" button will be immediately enabled and you
+	may click on it and begin speaking.  In the HALF-DUPLEX
+	communication mode, the calling party is given the first
+	turn to speak and you must wait until your "PUSH-TO-TALK"
+	button is enabled to speak (If the calling party doesn't
+	speak, your "PUSH-TO-TALK" button will automatically be
+	enabled after a 15 second timeout). You may end a call at
+	any time by clicking on the "END CALL" button.
+
+
+EXITING IVOX
+
+	Exit IVOX by clicking on the "QUIT" button in the lower right
+	hand corner of IVOX's main window. You may also exit IVOX by 
+	closing the IVOX window in the fashion your X11 window manager 
+	requires (e.g. selecting "Quit" from the window's popup menu).
+
+        PLEASE REMEMBER TO POWER OFF YOUR MICROPHONE TO CONSERVE
+        ITS BATTERY!
+
+TROUBLESHOOTING
+
+"Services" warning during launch. 
+	Make sure there is an entry for IVOX in the hosts
+	"/etc/services" file.  Add the following:
+	"ivox	2998/udp	IVOX Voice Terminal"
+
+"Audio Device" error during launch. 
+	Make sure your workstation supports audio input and output.
+	(In HP case make sure the "Aserver" is running, see "man
+	aserver" for more information). Make sure you are running
+	from the console and/or have user privileges to use the
+	audio device.  Some systems restrict this to the console.
+
+No Speech Input (level meter not responding) 
+	Make sure mic is on, its battery (if applicable) is OK, and
+	the mic is plugged in the correct port.
+
+No Sound Output. 
+	Make sure speaker or headphones are
+	properly plugged in and turned on.  The output volume
+	usually needs to be set on a high setting when using most
+	workstation's built-in speakers.
+
+No response from remote party. 
+	Make sure the remote party is running IVOX. Try to "ping"
+	the remote host to make sure network connectivity is there.
+
+Remote party not receiving voice. 
+	Make sure the PTT button is engaged while you are talking.
+
+Voice quality is broken up. 
+	On lower end workstations (e.g. SUN SPARC II), make sure
+	that the CPU is not overly busy.  Some of the voice compression 
+        algorithms are CPU intensive. Without RSVP, highly loaded, 
+	very low data rate connections may drop too many voice packets.  
+	Networks supporting RSVP will reduce this problem.
+
+Poor voice quality. 
+	Make sure input levels are adjusted properly. Garbage in,
+	garbage out.  Try to use the best microphone available. A
+	directional microphone will minimize background noise and
+	result in better speech quality.  The IVOX compression
+	algorithms are sensitive to background noise and speech. 
+	The lower the data rate algorithm selected, the lower the
+	quality and greater the sensitivity to background noise.
+	On Linux PCs, many sound cards only support 8-bit sound
+        due to driver limitations.  IVOX will use 16-bit audio
+        when possible.  8-bit sound is of limited quality.
+
+Apparent lack of connectivity to some members in multicast.
+	Double check the time-to-live (TTL) required to reach all
+	members in your multicast group.  IVOX default TTL is 32.
+	It may be set to a different value with the -t command line
+	option.  A control will also be provided in the multicast
+        session window to set the TTL.  Check with the network manager 
+	to ensure that all gateways and routers between communicating 
+	workstations support IP multicast forwarding and/or routing.
+
+
+ADVANCED USERS SECTION
+
+  Installing IVOX 
+	IVOX consists of a single executable binary file.  It is
+	recommended that the following entry be made in the host's
+	"/etc/services" file:
+
+    ivox           2998/udp          IVOX voice terminal
+
+	IVOX will launch without this entry if port 2998 is
+	available but it is recommended that the entry be made to
+	reserve the port for IVOX operation.
+
+  IVOX Command Line Options
+
+	(NOTE: These command line options have not yet been 
+	 incorporated into IVOX 3.x.  It will happen very soon, 
+	 along with compatibility with Session Directory (sdr).)
+
+	The following command line options are available when
+	launching IVOX.  This enables scripts to be created to
+	launch IVOX in a preset mode.  Also the "CONFIGURE"
+	button's availability is controlled with a command line
+	option so that the controls are normally "locked" from the
+	typical user's access.
+
+-a  remoteHost   : The remoteHost (hostname or dotted decimal IP 
+		   address) is displayed in IVOX's user interface 
+		   so that the user may press the CALL button 
+		   immediately without explicitly typing the 
+		   remote host address.  default = "hostname"
+
+-v  vocoderType  : the default type is ALPC2400.  Others are:
+                   ALPC1200, ALVC800, ALVC600, LPC2400
+                   LVC1200, LVC800, and LVC600.
+
+-f  numFrames    : number of vocoder frames per packet
+                   (1-20) default = 8 (More frames per packet
+                   lowers the raw data rate required by reducing
+                   the ratio of network headers to user data)
+
+-w  windowTime   : Window (buffering) time. (0-15 seconds)
+                   default = 1 sec.  (Larger window times create
+                   more end-to-end buffering delay but help to
+                   overcome network connections with large jitter
+                   in data delivery time)
+
+-t  ttl          : Sets IP time-to-live for multicast
+                   packets. (1-255) default = 32
+
+-s  serialDevice : Allows the user to specify the serial device for
+                   use with the external hardware vocoder.
+                   default = "/dev/ttyb"
+
+-h               : Sets IVOX to HALF-DUPLEX comm. mode. 
+                   (default = FULL-DUPLEX)
+
+-c               : Enables the "CONFIGURE" button (Allows
+                   user to change IVOX settings).
+
+CREDITS
+
+	IVOX is based on software developed at the Naval Research
+	Laboratory by Brian Adamson and Joe Macker for research
+	projects sponsored by the Office of Naval Research (ONR).
+	
+	At one point, IVOX was also supported by:
+
+		Newlink Global Engineering Corporation 
+		6186 Old Franconia Road
+		Alexandria, VA 22310 
+		(703) 971-3303
+		<adamson@newlink2000.com>
+
+	Versions for additional operating systems (Win32, MacOS, etc) are 
+        in development.
+
+	The development of the external hardware vocoder was supported by
+	the Naval Research Laboratory and is supplied by:
+
+		Nova Engineering, Inc.
+		5 Circle Freeway Drive
+		Cincinnati, OH 45246-1105
+		(513) 860-3456      

@@ -1,0 +1,451 @@
+diff -Nru a/CYGWIN-PATCHES/dhcp-3.0.1rc11.README b/CYGWIN-PATCHES/dhcp-3.0.1rc11.README
+--- /dev/null	Wed Dec 31 16:00:00 1969
++++ b/CYGWIN-PATCHES/dhcp-3.0.1rc11.README	Mon Feb 03 17:39:10 2003
+@@ -0,0 +1,36 @@
++ISC DHCP 3.0.1rc11 for CYGWIN
++
++This package contains the ISC's reference DHCP server/client
++implementation version 3.0.1rc11. The original sources have
++been patched to make it work in the CYGWIN environment.
++
++If you have the development tools installed, then you should
++be able to do the simple commands
++
++	$ ./configure 
++	$ make 
++	$ make install
++
++Unlike other projects, configure does not take a 
++'--prefix=<dir>' command-line option to change the install
++prefix. At install time, however, a prefix can be provided 
++by defining the DESTDIR macro on the command line, like this
++
++	make DESTDIR=/tmp/dhcp install
++
++Most of the work to make this project work in the CYGWIN
++environment was contributed by Mike Westkamper of WEI Inc. 
++with some further modification by Brett Hunt of Micron
++Technology, Inc.
++
++Please see the example dhcpd.conf for how to set up a multi-
++homed workstation to only listen on one interface. 
++Specifically, you need to use the 'local-address' directive.
++
++The leases file will be stored in /var/spool/dhcp. Before
++starting the DHCP server (dhcpd) you must create the leases
++file. eg. touch /var/spool/dhcp/dhcpd.leases
++
++The configuration file will be stored in /etc/dhcpd.conf
++
++This file was created 3 Feb 2003 by Brett Hunt
+diff -Nru a/CYGWIN-PATCHES/setup.hint b/CYGWIN-PATCHES/setup.hint
+--- /dev/null	Wed Dec 31 16:00:00 1969
++++ b/CYGWIN-PATCHES/setup.hint	Mon Feb 03 17:39:10 2003
+@@ -0,0 +1,11 @@
++prev: 3.0.1rc10-1
++curr: 3.0.1rc11-1
++category: System
++requires: cygwin
++sdesc:    "ISC DHCP reference implementation"
++ldesc:    "ISC DHCP reference server and client.
++Intended for use as a dhcp server. The client,
++relay, and OMAPI portions have not been tested.
++The DHCP should be configured with the 
++local-address directive if it is to be used on
++a system with multiple interface cards."
+diff -Nru a/Makefile b/Makefile
+--- a/Makefile	Mon Feb 03 17:39:10 2003
++++ b/Makefile	Mon Feb 03 17:39:10 2003
+@@ -52,6 +52,10 @@
+ 	   echo No build directory for $$sysname - please run ./configure.; \
+ 	else \
+ 	   (cd work.$$sysname; make install); \
++	fi; \
++	if [ "$$sysname" = "cygwin" ]; then \
++	   mkdir -p ${DESTDIR}/usr/doc/Cygwin; \
++	   cp CYGWIN-PATCHES/*.README ${DESTDIR}/usr/doc/Cygwin; \
+ 	fi
+ 
+ depend:
+diff -Nru a/Makefile.conf b/Makefile.conf
+--- a/Makefile.conf	Mon Feb 03 17:39:10 2003
++++ b/Makefile.conf	Mon Feb 03 17:39:10 2003
+@@ -431,8 +431,8 @@
+ #CLIENTBINDIR = /opt/sbin
+ ##--qnxnto--
+ 
+-## CygWin32
+-##--cygwin32--
++## CygWin
++##--cygwin--
+ #CF = cf/cygwin32.h
+ #ADMMANDIR = /usr/man/man8
+ #ADMMANEXT = .8
+@@ -442,19 +442,11 @@
+ #LIBMANEXT = .3
+ #USRMANDIR = /usr/man/man1
+ #USRMANEXT = .1
+-#VARRUN = /etc
+-#MANINSTALL = /bin/true 
+-#INSTALL = cp
+-#BINDIR = /etc
+-#CLIENTBINDIR = /etc
+-#CC=/usr/local/i386-unknown-cygwin32/bin/gcc
+-#AR=/usr/local/i386-unknown-cygwin32/bin/ar
+-#AS=/usr/local/i386-unknown-cygwin32/bin/as
+-#LD=/usr/local/i386-unknown-cygwin32/bin/ld
+-#NM=/usr/local/i386-unknown-cygwin32/bin/nm
+-#RANLIB=/usr/local/i386-unknown-cygwin32/bin/ranlib
+-#STRIP=/usr/local/i386-unknown-cygwin32/bin/strip
+-##--cygwin32--
++#VARDB = /var/spool/dhcp
++#LIBDIR=/usr/lib
++#INCDIR=/usr/include
++#EXECEXT = .
++##--cygwin--
+ 
+ ## IRIX 6.x
+ ##--irix--
+diff -Nru a/client/Makefile.dist b/client/Makefile.dist
+--- a/client/Makefile.dist	Mon Feb 03 17:39:10 2003
++++ b/client/Makefile.dist	Mon Feb 03 17:39:10 2003
+@@ -124,6 +124,6 @@
+ 
+ 
+ dhclient:	$(OBJS) $(DHCPLIB)
+-	$(CC) $(LFLAGS) -o $(PROG) $(OBJS) $(DHCPLIB) $(LIBS)
++	$(CC) $(LFLAGS) -o $(PROG)$(EXECEXT) $(OBJS) $(DHCPLIB) $(LIBS)
+ 
+ # Dependencies (semi-automatically-generated)
+diff -Nru a/configure b/configure
+--- a/configure	Mon Feb 03 17:39:10 2003
++++ b/configure	Mon Feb 03 17:39:10 2003
+@@ -47,6 +47,17 @@
+         sysname_print=sco
+       fi
+     ;;
++    CYGWIN_NT-5.1)
++      # Windows XP
++      sysname=cygwin;;
++    CYGWIN_NT-5.0)
++      # Windows 2000
++      sysname=cygwin;;
++    CYGWIN_NT-4.0)
++      # Windows NT 4.0
++      sysname=cygwin;;
++    cygwin)
++      sysname=cygwin;;
+     AIX)
+       sysname=aix;;
+     Darwin)
+diff -Nru a/dhcpctl/Makefile.dist b/dhcpctl/Makefile.dist
+--- a/dhcpctl/Makefile.dist	Mon Feb 03 17:39:10 2003
++++ b/dhcpctl/Makefile.dist	Mon Feb 03 17:39:10 2003
+@@ -32,10 +32,10 @@
+ all:	libdhcpctl.a omshell cltest $(CATMANPAGES)
+ 
+ omshell:	omshell.o $(DHCPCTLLIBS)
+-	$(CC) $(DEBUG) $(LFLAGS) -o omshell omshell.o $(DHCPCTLLIBS) $(LIBS)
++	$(CC) $(DEBUG) $(LFLAGS) -o omshell$(EXECEXT) omshell.o $(DHCPCTLLIBS) $(LIBS)
+ 
+ cltest:	cltest.o $(DHCPCTLLIBS)
+-	$(CC) $(DEBUG) $(LFLAGS) -o cltest cltest.o $(DHCPCTLLIBS) $(LIBS)
++	$(CC) $(DEBUG) $(LFLAGS) -o cltest$(EXECEXT) cltest.o $(DHCPCTLLIBS) $(LIBS)
+ 
+ libdhcpctl.a:	$(OBJ)
+ 	rm -f libdhcpctl.a
+diff -Nru a/example-dhcpd.conf b/example-dhcpd.conf
+--- /dev/null	Wed Dec 31 16:00:00 1969
++++ b/example-dhcpd.conf	Mon Feb 03 17:39:10 2003
+@@ -0,0 +1,51 @@
++# Global options
++option domain-name "mynetwork.com";
++local-address 192.168.0.250; # This limits dhcpd to listening to this interface
++max-lease-time 180;
++default-lease-time 180;
++ddns-update-style none;
++
++# TFTP Server IP (this one) and file
++# next-server 192.168.0.10; # Assumed to be the DHCP server
++# option tftp-server-name "HOST";
++filename "pxegrub";
++
++# NTP Server Address (this one)
++#option ntp-servers 192.168.0.10, 192.168.0.250;
++
++# Time Server Address (this one)
++# option time-servers 192.168.0.10; # The Host computer (.250?)
++
++# Define pxe option 135
++#option zone-pxe-option code 135 = text;
++#option zone-pxe-option "zone";
++
++# Define the pxe grub filename option
++option zone-pxegrub-filename code 150 = text;
++option zone-pxegrub-filename "/tftpboot/grub.conf";
++
++# Server name - Name of this server
++#   This could be set on a per oven basis
++# server-name "HOST";
++
++# option routers 192.168.0.250;
++
++#log-facility Application;
++#log(debug, "debug DHCPD-logging");
++#log(debug, binary-to-ascii(10,8, ".", packet(24,4)));
++
++subnet 192.168.0.0 netmask 255.255.255.0 {
++# Can't act authoritative because we see packets from both interfaces (why?).
++#   authoritative;
++# Don't service bootp requests
++#   range dynamic-bootp 192.168.0.100 192.168.0.200;
++   range 192.168.0.100 192.168.0.200;
++#   log(debug, "debug 192 DHCPD-logging");
++#   log(debug, binary-to-ascii(10,8, ".", packet(24,4)));
++}
++
++subnet 192.168.10.0 netmask 255.255.255.0 {
++   non-authoritative;
++#   log(debug, "debug 137 DHCPD-logging");
++#   log(debug, binary-to-ascii(10,8, ".", packet(24,4)));
++}
+diff -Nru a/includes/cf/cygwin32.h b/includes/cf/cygwin32.h
+--- a/includes/cf/cygwin32.h	Mon Feb 03 17:39:10 2003
++++ b/includes/cf/cygwin32.h	Mon Feb 03 17:39:10 2003
+@@ -54,7 +54,77 @@
+ #undef FD_ISCLR
+ #undef FD_SETSIZE
+ #define IFNAMSIZ 16
+-#include <winsock.h>
++
++#define __INSIDE_CYGWIN_NET__
++#include <cygwin/in.h>
++#include <cygwin/if.h>
++#include <sys/socket.h>
++#include <netdb.h>
++#ifndef IFF_POINTOPOINT
++#define IFF_POINTOPOINT 0x10
++#endif
++#ifndef FD_SETSIZE
++#define FD_SETSIZE 256
++#endif	// ifndef FD_SETSIZE
++#ifndef FD_SET
++
++// typedef long fd_mask;
++
++#undef NFDBITS
++#define NFDBITS	(sizeof(fd_mask) * NBBY)	/* bits per mask */
++#ifndef howmany
++#define	howmany(x, y)	(((x)+((y)-1))/(y))
++#endif /* howmany */
++
++typedef	struct fd_set {
++	fd_mask	fds_bits[howmany(FD_SETSIZE, NFDBITS)];
++} fd_set;
++
++#define	FD_SET(n, p)	((p)->fds_bits[(n)/NFDBITS] |= (1 << ((n) % NFDBITS)))
++#define	FD_CLR(n, p)	((p)->fds_bits[(n)/NFDBITS] &= ~(1 << ((n) % NFDBITS)))
++#define	FD_ISSET(n, p)	((p)->fds_bits[(n)/NFDBITS] & (1 << ((n) % NFDBITS)))
++#define FD_ZERO(p)	memset((char *)(p), '\0', sizeof(*(p)))
++
++#endif /* FD_SET */
++#ifdef NEED_PRAND_CONF
++const char *cmds[] = {
++	"/bin/ps -axlw 2>&1",
++	"/sbin/arp -an 2>&1",
++	"/bin/netstat -an 2>&1",
++	"/bin/df  2>&1",
++	"/usr/bin/dig com. soa +ti=1 +retry=0 2>&1",
++	"/usr/bin/uptime  2>&1",
++	"/bin/netstat -s 2>&1",
++	"/usr/bin/dig . soa +ti=1 +retry=0 2>&1",
++	"/usr/bin/vmstat  2>&1",
++	"/usr/bin/w  2>&1",
++	NULL
++};
++const char *files[] = {
++	"/proc/stat",
++	"/proc/rtc",
++	"/proc/meminfo",
++	"/proc/interrupts",
++	"/proc/self/status",
++	"/var/log/messages",
++	"/var/log/wtmp",
++	"/var/log/lastlog",
++	NULL
++};
++const char *dirs[] = {
++	"/tmp",
++	"/usr/tmp",
++	".",
++	"/",
++	"/var/spool",
++	"/dev",
++	"/var/spool/mail",
++	"/home",
++	"/usr/home",
++	NULL
++};
++#endif	/* NEED_PRAND_CONF */
++#define GET_HOST_ID_MISSING 1
+ 
+ #include <syslog.h>
+ #include <string.h>
+@@ -81,29 +151,29 @@
+ #define NO_SNPRINTF
+ 
+ #ifndef _PATH_DHCPD_PID
+-#define _PATH_DHCPD_PID	"//e/etc/dhcpd.pid"
++#define _PATH_DHCPD_PID	"/var/run/dhcpd.pid"
+ #endif
+ #ifndef _PATH_DHCPD_DB
+-#define _PATH_DHCPD_DB "//e/etc/dhcpd.leases"
++#define _PATH_DHCPD_DB "/var/spool/dhcp/dhcpd.leases"
+ #endif
+ #ifndef _PATH_DHCPD_CONF
+-#define _PATH_DHCPD_CONF "//e/etc/dhcpd.conf"
++#define _PATH_DHCPD_CONF "/etc/dhcpd.conf"
+ #endif
+ #ifndef _PATH_DHCLIENT_PID
+-#define _PATH_DHCLIENT_PID "//e/etc/dhclient.pid"
++#define _PATH_DHCLIENT_PID "/var/run/dhclient.pid"
+ #endif
+ #ifndef _PATH_DHCLIENT_DB
+-#define _PATH_DHCLIENT_DB "//e/etc/dhclient.leases"
++#define _PATH_DHCLIENT_DB "/var/spool/dhcp/dhclient.leases"
+ #endif
+ #ifndef _PATH_DHCLIENT_CONF
+-#define _PATH_DHCLIENT_CONF "//e/etc/dhclient.conf"
++#define _PATH_DHCLIENT_CONF "/etc/dhclient.conf"
+ #endif
+ #ifndef _PATH_DHCRELAY_PID
+-#define _PATH_DHCRELAY_PID "//e/etc/dhcrelay.pid"
++#define _PATH_DHCRELAY_PID "/var/run/dhcrelay.pid"
+ #endif
+ 
+ #ifndef _PATH_RESOLV_CONF
+-#define _PATH_RESOLV_CONF "//e/etc/resolv.conf"
++#define _PATH_RESOLV_CONF "/etc/resolv.conf"
+ #endif
+ 
+ #define int8_t		char
+diff -Nru a/includes/dhcpd.h b/includes/dhcpd.h
+--- a/includes/dhcpd.h	Mon Feb 03 17:39:10 2003
++++ b/includes/dhcpd.h	Mon Feb 03 17:39:10 2003
+@@ -50,7 +50,6 @@
+ 
+ #include <netdb.h>
+ #else
+-#define fd_set cygwin_fd_set
+ #include <sys/types.h>
+ #endif
+ #include <fcntl.h>
+diff -Nru a/includes/omapip/omapip_p.h b/includes/omapip/omapip_p.h
+--- a/includes/omapip/omapip_p.h	Mon Feb 03 17:39:10 2003
++++ b/includes/omapip/omapip_p.h	Mon Feb 03 17:39:10 2003
+@@ -53,7 +53,6 @@
+ 
+ #include <netdb.h>
+ #else
+-#define fd_set cygwin_fd_set
+ #include <sys/types.h>
+ #endif
+ #include <fcntl.h>
+diff -Nru a/minires/res_mkupdate.c b/minires/res_mkupdate.c
+--- a/minires/res_mkupdate.c	Mon Feb 03 17:39:10 2003
++++ b/minires/res_mkupdate.c	Mon Feb 03 17:39:10 2003
+@@ -1099,3 +1099,33 @@
+ 	}
+ 	return (ss->s_name);
+ }
++
++#ifdef __CYGWIN32__
++void setservent(int i)
++{
++}
++
++struct servent * getservent()
++{
++	return NULL;
++}
++
++void endservent()
++{
++}
++
++void setprotoent(int i)
++{
++}
++
++void endprotoent()
++{
++}
++
++struct protoent * getprotoent()
++{
++	return NULL;
++}
++
++#endif
++
+diff -Nru a/omapip/Makefile.dist b/omapip/Makefile.dist
+--- a/omapip/Makefile.dist	Mon Feb 03 17:39:10 2003
++++ b/omapip/Makefile.dist	Mon Feb 03 17:39:10 2003
+@@ -37,7 +37,7 @@
+ all:	libomapi.a svtest $(CATMANPAGES)
+ 
+ svtest:	test.o libomapi.a $(BINDLIB) ../dst/libdst.a
+-	$(CC) $(DEBUG) $(LFLAGS) -o svtest test.o $(BINDLIB) \
++	$(CC) $(DEBUG) $(LFLAGS) -o svtest$(EXECEXT) test.o $(BINDLIB) \
+ 			libomapi.a ../dst/libdst.a $(LIBS)
+ 
+ libomapi.a:	$(OBJ)
+diff -Nru a/omapip/errwarn.c b/omapip/errwarn.c
+--- a/omapip/errwarn.c	Mon Feb 03 17:39:10 2003
++++ b/omapip/errwarn.c	Mon Feb 03 17:39:10 2003
+@@ -193,7 +193,7 @@
+ 	while (*s) {
+ 		if (infmt) {
+ 			if (*s == 'm') {
+-#ifndef __CYGWIN32__
++#if 1
+ 				m = strerror (errno);
+ #else
+ 				m = pWSAError ();
+diff -Nru a/relay/Makefile.dist b/relay/Makefile.dist
+--- a/relay/Makefile.dist	Mon Feb 03 17:39:10 2003
++++ b/relay/Makefile.dist	Mon Feb 03 17:39:10 2003
+@@ -78,6 +78,6 @@
+ 		-e "s#RUNDIR#$(VARRUN)#" < dhcrelay.8 >dhcrelay.man8
+ 
+ dhcrelay:	dhcrelay.o $(DHCPLIB)
+-	$(CC) $(LFLAGS) -o $(PROG) dhcrelay.o $(DHCPLIB) $(LIBS)
++	$(CC) $(LFLAGS) -o $(PROG)$(EXECEXT) dhcrelay.o $(DHCPLIB) $(LIBS)
+ 
+ # Dependencies (semi-automatically-generated)
+diff -Nru a/server/Makefile.dist b/server/Makefile.dist
+--- a/server/Makefile.dist	Mon Feb 03 17:39:10 2003
++++ b/server/Makefile.dist	Mon Feb 03 17:39:10 2003
+@@ -98,6 +98,6 @@
+ 		-e "s#RUNDIR#$(VARRUN)#g" < dhcpd.leases.5 >dhcpd.leases.man5
+ 
+ dhcpd:	$(OBJS) $(COBJ) $(DHCPLIB)
+-	$(CC) $(LFLAGS) -o dhcpd $(OBJS) $(DHCPLIB) $(LIBS)
++	$(CC) $(LFLAGS) -o $(PROG)$(EXECEXT) $(OBJS) $(DHCPLIB) $(LIBS)
+ 
+ # Dependencies (semi-automatically-generated)
+diff -Nru a/site.conf b/site.conf
+--- a/site.conf	Mon Feb 03 17:39:10 2003
++++ b/site.conf	Mon Feb 03 17:39:10 2003
+@@ -1,2 +1,11 @@
+ # Put local site configuration stuff here to override the default
+ # settings in Makefile.conf
++
++# Debugging options
++#DEBUG=-g -O2
++#DEBUG=-g -O0 -DDEBUG -DDEBUG_PACKET -DDEBUG_OMAPI -DBINDING_STATE_DEBUG
++#COPTS = -D_PATH_DHCPD_DB="\"$(VARDB)/dhcpd.leases\"" \
++#        -D_PATH_DHCPD_CONF="\"$(ETC)/dhcpd.conf\"" \
++#	-D_PATH_DHCPD_PID="\"$(VARRUN)/dhcpd.pid\"" \
++#        $(BINDDEF) $(CC_OPTIONS)
++

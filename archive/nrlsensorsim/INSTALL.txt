@@ -1,0 +1,647 @@
+<PRE>
+TITLE: Installing NRL's Sensor Network extensions to NS-2.1b9a or NS-2.26
+
+AUTHOR: Ian Downard
+
+DATE: March 2003
+
+ABSTRACT:
+
+  These instructions describe how to install the code necessary for simulating
+  sensor networks in the Network Simulator, version 2.1b9a or 2.26, distributed
+  by the Information Sciences Institute at the USC School of Engineering [1]. 
+  Detailed instructions are also given on how to use these extensions in your
+  own sensor network simulations.
+
+INTRODUCTION:
+
+  The NRL SensorSim extensions to ns-2 facilitate simulating sensor networks. 
+The code and documentation for extending ns-2.1b9a or ns-2.26 is available
+here:
+
+            http://pf.itd.nrl.navy.mil/projects/nrlsensorsim/
+
+Throughout the design, extra effort was taken to imbed these extensions in  
+parrallel with the existing ns2 infrastructure, so that sensor network    
+simulations sit on top of CMU's extensions for wireless mobile  networks.
+
+A shell script is provided in nrlsensorsim.tgz which will automatically patch
+the ns-allinone-2.1b9a or ns-allinone-2.26 (you specify which) with all
+necessary file changes.  As long as files in your ns-allinone tree have not
+been modified allready, this script should work fine.  Otherwise, instructions
+are provided in this document to make all the file changes and additions by
+hand.
+
+  For the remainder of this document, "XXXX" should be read as your ns2
+version.  So if you're using ns-2.1b9a, then ns-allinone-XXXX should be read as
+"ns-allinone-2.1b9a".
+
+
+QUICK AND DIRTY INSTALLATION:
+
+  A script has been written to automatically patch the ns-2.1b9a or ns-2.26
+  distribution to include the sensor network and OLSR extensions developed at
+  NRL during the winter of 2002/2003.  That script is called "patch_script.sh",
+  and must be run from the nrlsensorsim directory, which in turn must be
+  located in the same directory that has the  ns-allinone-2.1b9a directory.  So
+  here's the procedure:
+
+    tar -xzvf ns-allinone-XXXX.tgz      (where XXXX is the release number)
+    tar -xzvf nrlsensorsim.tgz
+    cd nrlsensorsim/
+    ./patch_script.sh
+    cd ../ns-allinone-XXXX/
+    ./install
+
+  If you want to apply the sensor network and/or OLSR extensions to a build of
+  ns2 which contains your own modifications, then you will probably need to read
+  through the steps given below for manually applying all the source code
+  changes.  The patch script likely won't work for modified ns2 distributions
+  (but it does backup every file it tries to patch, so your changes won't be
+  lost forever).
+  
+  For the remainder of this document, "XXXX" should be read as your ns2
+  version.  So if you're using ns-2.1b9a, then ns-allinone-XXXX should be read
+  as "ns-allinone-2.1b9a".
+
+
+REQUIRED FILES and DIRECTORIES:
+
+  phenom/debug.cpp
+  phenom/debug.h
+  phenom/sysdefs.h      (not necessary if nrlolsr is installed)
+  phenom/phenom.h
+  phenom/phenom.cc
+  phenom/phenom_packet.h
+  phenom/readme.ian
+
+  sensornets-NRL/sensorapp.cc
+  sensornets-NRL/sensorapp.h
+  sensornets-NRL/sensoragent.cc
+  sensornets-NRL/sensoragent.h
+
+OPTIONAL FILES and DIRECTORIES:
+
+  These files may be helpful in determining how to modify the original ns files
+  in order to simulate sensor networks.  If the files in
+  example_files/originals/ are the same as the corresponding files in your own
+  ns distribution, then you can just replace them with the files in
+  example_files/updated/.
+
+    example_files/
+    example_simulations/            (sample simulation configuration files)
+
+STEP ONE - copy required files to ns:
+
+  Copy all the required files and directories to your ns directory.  If you're
+  using ns-XXXX, then the path to the required files might look like this:
+
+    .../ns-allinone-XXXX/ns-XXXX/phenom/debug.cpp
+    .../ns-allinone-XXXX/ns-XXXX/phenom/sysdefs.h
+    .../ns-allinone-XXXX/ns-XXXX/phenom/phenom.h
+    .../ns-allinone-XXXX/ns-XXXX/phenom/phenom.cc
+    .../ns-allinone-XXXX/ns-XXXX/phenom/phenom_packet.h
+    .../ns-allinone-XXXX/ns-XXXX/phenom/debug.h
+    .../ns-allinone-XXXX/ns-XXXX/phenom/readme.ian
+
+    .../ns-allinone-XXXX/ns-XXXX/sensornets-NRL/sensorapp02.cc
+    .../ns-allinone-XXXX/ns-XXXX/sensornets-NRL/sensoragent.cc
+    .../ns-allinone-XXXX/ns-XXXX/sensornets-NRL/sensoragent.h
+    .../ns-allinone-XXXX/ns-XXXX/sensornets-NRL/sensorapp02.h
+    .../ns-allinone-XXXX/ns-XXXX/sensornets-NRL/sensorapp.cc
+    .../ns-allinone-XXXX/ns-XXXX/sensornets-NRL/sensorapp.h
+
+    .../ns-allinone-XXXX/ns-XXXX/phenom08.tcl
+
+  The remaining steps will assume you are working in your ns-[version] directory.
+  So, if you're using ns-XXXX, then the remaining steps will reference all
+  files from your .../ns-XXXX/ directory.
+
+
+STEP TWO - modify common/packet.h:
+
+  In ns-XXXX/common/packet.h, make the following three additions:
+    1. add "#define HDR_PHENOM(p) (hdr_phenom::access(p))" towards the top
+    2. add "PT_PHENOM" to enum packet_t type
+    3. add "name_[PT_PHENOM]= "PHENOM";" to p_info()
+
+
+STEP THREE - modify trace/cmu-trace.h and trace/cmu-trace.cc:
+
+  In trace/cmu-trace.h, add "void format_phenom (Packet *p, int offset);" 
+  as a function private to the CMUTrace class.
+  
+  In trace/cmu-trace.cc, make the following three additions:
+    1. add "#include <phenom/phenom_packet.h>" to the top
+    2. add the following case statement to the switch(ch->ptype()) section:
+
+            case PT_PHENOM:
+            format_phenom(p,offset);
+            break;
+
+    3. add the following format_phenom function to anywhere below the
+       constructor:
+
+    /**************************************************************************\
+    void
+    CMUTrace::format_phenom(Packet *p, int offset)
+    {
+      struct payload *msg_payload;
+      struct hdr_phenom_main *mh = HDR_PHENOM(p);
+      struct hdr_cmn *ch = HDR_CMN(p);
+      struct hdr_ip *ih = HDR_IP(p);
+      struct hdr_phenom_hello *asymlink,*symlink,*mprlink, *hdr_hello;
+      struct hdr_phenom_tc *hdr_tc;
+      int local_offset=sizeof(struct hdr_phenom_main);
+    
+      msg_payload=PHENOM_PAYLOAD(p,local_offset);
+       
+      switch(msg_payload->phenomenon)
+      {
+        case TEST_PHENOMENON:
+          sprintf(pt_->buffer() + offset,"[%d %d %d %d](TEST_PHENOMENON)",
+                  msg_payload->msg_oAddr, msg_payload->msg_seqno, 
+                  msg_payload->msg_size, msg_payload->phenomenon);
+          break;
+        case CO:
+          sprintf(pt_->buffer() + offset,"[%d %d %d %d](CO)",
+                  msg_payload->msg_oAddr, msg_payload->msg_seqno, 
+                  msg_payload->msg_size, msg_payload->phenomenon);
+          break;
+        case HEAVY_GEO:
+          sprintf(pt_->buffer() + offset,"[%d %d %d %d](HEAVY_GEO)",
+                  msg_payload->msg_oAddr, msg_payload->msg_seqno, 
+                  msg_payload->msg_size, msg_payload->phenomenon);
+          break;
+        case LIGHT_GEO:
+          sprintf(pt_->buffer() + offset,"[%d %d %d %d](LIGHT_GEO)",
+                  msg_payload->msg_oAddr, msg_payload->msg_seqno, 
+                  msg_payload->msg_size, msg_payload->phenomenon);
+          break;
+        case SOUND:
+          sprintf(pt_->buffer() + offset,"[%d %d %d %d](SOUND)",
+                  msg_payload->msg_oAddr, msg_payload->msg_seqno, 
+                  msg_payload->msg_size, msg_payload->phenomenon);
+          break;
+    
+        default:
+    #ifdef WIN32
+        fprintf(stderr, "CMUTrace::format_aodv: invalid PHENOM packet type\n");
+    #else
+        fprintf(stderr, "%s: invalid PHENOM packet type \n", __FUNCTION__);
+    #endif
+        abort();
+      }
+    }
+    
+    \**************************************************************************/
+
+
+STEP FOUR - modify tcl/lib/ns-lib.tcl:
+
+  In tcl/lib/ns-lib.tcl, make the following additions:
+    1. add the following line 
+
+        "Simulator instproc PHENOMchannel {val} {$self set PHENOMchannel_ $val}"
+
+      below this line:
+
+        "Simulator instproc channel {val} {$self set channel_ $val}"
+
+    2. add the line "PHENOMchannel_ chan PHENOMchan \" to the "$self instvar"
+       section of the "Simulator instproc node-config" procedure, so it looks
+       something like:
+       
+            $self instvar addressType_  routingAgent_ propType_  macTrace_ \
+            routerTrace_ agentTrace_ movementTrace_ channelType_ channel_ \
+            PHENOMchannel_ chan PHENOMchan \
+            topoInstance_ propInstance_ mobileIP_ rxPower_ \
+            txPower_ idlePower_ satNodeType_
+
+    3. add the following if condition to the "Simulator instproc node-config"
+       procedure:
+       
+           if {[info exists PHENOMchannel_]} {
+             if {[string compare $PHENOMchannel_ "off"] != 0} {
+             set PHENOMchan $PHENOMchannel_
+             }
+           }
+
+    4. add the following lines into the "switch -exact $routingAgent_" section 
+       in the "Simulator instproc create-wireless-node args" procedure:
+
+            PHENOM {
+              set ragent [$self create-phenom-agent $node]
+            }
+    
+    5. also in the "Simulator instproc create-wireless-node args" procedure,
+       *below* the following add-interface command:
+
+    	$node add-interface $chan $propInstance_ $llType_ $macType_ \
+    			$ifqType_ $ifqlen_ $phyType_ $antType_ \
+    			$inerrProc_ $outerrProc_ $FECProc_
+
+       and just *above* the following section of code:
+
+    	# Bind routing agent and mip agent if existing basestation 
+    	# address setting
+            if { [info exist wiredRouting_] && $wiredRouting_ == "ON" } {
+    		if { $routingAgent_ != "DSR" } {
+    			$node mip-call $ragent
+    		}
+    	}
+       
+       insert the following if condition:
+
+         if {[info exists PHENOMchannel_]} {
+           if {[string compare $PHENOMchannel_ "off"] != 0} {
+             $node add-PHENOMinterface $PHENOMchannel_ $propInstance_ $llType_ $macType_ \
+                 $ifqType_ $ifqlen_ $phyType_ $antType_ \
+                 $inerrProc_ $outerrProc_ $FECProc_
+           }
+         }
+
+    6. add the following function in where the other Simulator functions are
+       (around line #1640) (but it doesn't really matter where):
+
+            Simulator instproc create-phenom-agent { node } {
+            # Creating phenom routing agent
+            set ragent [new Agent/PHENOM [$node id]]
+            $self at 0.0 "$ragent start"     ;# start BEACON/HELLO Messages
+            $node set ragent_ $ragent
+            return $ragent
+            }
+
+    7. Include "sensePower_" as one of the available parameters for node
+       configurations.  So, add this line:
+       
+         Simulator instproc sensePower  {val} { $self set sensePower_  $val }
+
+       below this line:
+
+         Simulator instproc idlePower  {val} { $self set idlePower_  $val }
+
+    8. Include "sensePower_" as one of the variables local to the node-config
+       procedure.  So, change this:
+            $self instvar addressType_  routingAgent_ propType_  macTrace_ \
+    		routerTrace_ agentTrace_ movementTrace_ channelType_ channel_ \
+    		PHENOMchannel_ chan PHENOMchan \
+    		topoInstance_ propInstance_ mobileIP_ rxPower_ \
+    		txPower_ idlePower_ satNodeType_
+        to
+            $self instvar addressType_  routingAgent_ propType_  macTrace_ \
+    		routerTrace_ agentTrace_ movementTrace_ channelType_ channel_ \
+    		PHENOMchannel_ chan PHENOMchan topoInstance_ propInstance_ \
+    		mobileIP_ rxPower_ txPower_ idlePower_ sensePower_ satNodeType_
+        
+        just below the "Simulator instproc node-config args {" line.
+    
+    9. Similar to step 8, we do the same thing for the create-wireless-node
+       procdure.  Add sensePower_ to its list of local variables.  In other
+       words, change 
+            Simulator instproc create-wireless-node args {
+                $self instvar routingAgent_ wiredRouting_ propInstance_ llType_ \
+        		macType_ ifqType_ ifqlen_ phyType_ chan PHENOMchannel_ antType_ \
+        		energyModel_ initialEnergy_ txPower_ rxPower_ idlePower_ \
+        		topoInstance_ level1_ level2_ inerrProc_ outerrProc_ FECProc_
+        to
+            Simulator instproc create-wireless-node args {
+                $self instvar routingAgent_ wiredRouting_ propInstance_ llType_ \
+        		macType_ ifqType_ ifqlen_ phyType_ chan PHENOMchannel_ antType_ \
+        		energyModel_ initialEnergy_ txPower_ rxPower_ idlePower_ sensePower_ \
+        		topoInstance_ level1_ level2_ inerrProc_ outerrProc_ FECProc_
+
+    10. In the same create-wireless-node procedure as step 9, there is an if
+    statement that looks like this:
+        if [info exists rxPower_] {
+    	$node setPr $rxPower_
+        }
+
+    Put the following if statement after the previous one:
+
+        if [info exists sensePower_] {
+    	$node setPs $sensePower_
+        }
+
+    
+STEP FIVE - modify queue/priqueue.cc:
+
+  In queue/priqueue.cc, add "case PT_PHENOM:" to the PriQueue::recv function. 
+  Add it right before the default case.
+
+
+STEP SIX - modify Makefile.in
+
+  In ./Makefile.in, make the following five additions:
+  
+  1. add "	phenom/phenom.o  phenomagent/phenomagent.o \" to the first line of
+     OBJ_CC.  Ensure that the first character of that line is a tab character.
+
+  2. Skip this step if nrlolsr/debug.o is already define in OBJ_NRLOLSR_CPP.
+     After the OBJ_CC section, add "OBJ_PHENOM_CPP = phenom/debug.o"
+  
+  3. add "$(OBJ_PHENOM_CPP:.o=.cpp)" to the SRC, so it looks something like:
+
+     SRC =	$(OBJ_C:.o=.c) $(OBJ_CC:.o=.cc) $(OBJ_PHENOM_CPP:.o=.cpp) \
+    	$(OBJ_EMULATE_C:.o=.c) $(OBJ_EMULATE_CC:.o=.cc) \
+    	common/tclAppInit.cc common/tkAppInit.cc 
+
+  4. append $(OBJ_PHENOM_CPP) to OBJ, so it looks something like:
+     OBJ =	$(OBJ_C) $(OBJ_CC) $(OBJ_GEN) $(OBJ_COMPAT) $(OBJ_PHENOM_CPP)
+
+
+STEP SEVEN - Fix a bug in tcl/lib/ns-namsupp.tcl:
+
+  In tcl/lib/ns-namsupp.tcl, around line #61, change this block of code:
+  
+  ----------------------------------------------------------------------------
+    Node instproc color { color } {
+        $self instvar attr_ id_
+
+        set ns [Simulator instance]
+
+        if [$ns is-started] {
+            # color must be initialized
+
+            $ns puts-nam-config \
+            [eval list "n -t [$ns now] -s $id_ -S COLOR -c $color -o $attr_(COLOR) -i $color -I $attr_(LCOLOR)"]
+            set attr_(COLOR) $color
+            set attr_(LCOLOR) $color
+        } else {
+            set attr_(COLOR) $color
+            set attr_(LCOLOR) $color
+        }
+    }
+    ----------------------------------------------------------------------------
+
+  to this:
+
+    ----------------------------------------------------------------------------
+    Node instproc color { color } {
+       $self instvar attr_ id_
+
+       set ns [Simulator instance]
+
+       if [info exists attr_(COLOR)] {} else {
+         set attr_(COLOR) $color
+       }
+       if [info exists attr_(LCOLOR)] {} else {
+         set attr_(LCOLOR) $color
+       }
+       if [$ns is-started] {
+           $ns puts-nam-config \
+           [eval list "n -t [$ns now] -s $id_ -S COLOR -c $color -o $attr_(COLOR) -i $color -I $attr_(LCOLOR)"]
+       }
+    }
+  ----------------------------------------------------------------------------
+  
+  The original Node instproc color contains a bug because it tries to access
+  $color before that attribute gets set.  Our modified instproc fixes that
+  problem.  The bug is only visible if a node color is specified or changed
+  before the simulation is actually started (with something like "$ns_ run").
+
+
+STEP SEVEN - add two new procedures in tcl/lib/ns-mobilenode.tcl:
+
+  1. Create add-PHENOMinterface in tcl/lib/ns-mobilenode.tcl:
+  
+------------------------------------------------------------------------------
+#
+# The following setups up link layer, mac layer, network interface
+# and physical layer structures for a sensor node to detect phenomena
+# on.  We're using periodic broadcasts on a PHENOM channel to simulate
+# the presence of a phenomenon (like chemical cloud, or rolling armor) in our
+# simulated world.
+#
+# It's possible that adding the PHENOM interface would be more appropriately 
+# done as in the create-xtra-interface procedure in tcl/mobility/com.tcl.  I'm
+# not too sure, though.    -ian
+#
+
+Node/MobileNode instproc add-PHENOMinterface { channel pmodel lltype mactype \
+		qtype qlen iftype anttype inerrproc outerrproc fecproc} {
+	$self instvar nifs_ netif_ mac_ ifq_ ll_
+
+#    puts "add-PHENOMinterface: PHENOMchannel_ is $channel\n"
+	set ns [Simulator instance]
+	set imepflag [$ns imep-support]
+	set t $nifs_
+	incr nifs_
+
+    # this hack prevents MacIndex count from incrementing twice for 
+    # a (multi-homed) sensor node (see mac.cc)
+    if { $t > 0 } {
+      $mac_([expr $t-1]) adjust_index
+    }
+    
+	set netif_($t)	[new $iftype]		;# interface
+	set mac_($t)	[new $mactype]		;# mac layer
+	set ifq_($t)	[new $qtype]		;# interface queue
+	set ll_($t)	    [new $lltype]	    ;# link layer
+    set ant_($t)    [new $anttype]      ;# antenna type
+
+	set namfp [$ns get-nam-traceall]
+
+	#
+	# Local Variables
+	#
+	set nullAgent_ [$ns set nullAgent_]
+	set netif $netif_($t)
+	set mac $mac_($t)
+	set ifq $ifq_($t)
+	set ll $ll_($t)
+
+	#
+	# Link Layer
+	#
+	$ll mac $mac
+	$ll down-target $ifq
+
+	#
+	# Interface Queue
+	#
+	$ifq target $mac
+	$ifq set limit_ $qlen
+	set drpT [cmu-trace Drop "IFQ" $self]
+	$ifq drop-target $drpT
+
+	if { $namfp != "" } {
+		$drpT namattach $namfp
+	}
+	#
+	# Mac Layer
+	#
+	$mac netif $netif
+	$mac up-target $ll
+	$netif channel $channel
+    $netif up-target $mac
+	$netif propagation $pmodel	;# Propagation Model
+	$netif node $self		;# Bind node <---> interface
+	$netif antenna $ant_($t)
+	#
+	# Physical Channel
+	#
+	$channel addif $netif
+
+	# ============================================================
+
+	if { [Simulator set MacTrace_] == "ON" } {
+		#
+		# Trace Received Packets
+		#
+		if {$imepflag != ""} {
+			set rcvT [$self mobility-trace Recv "MAC"]
+		} else {
+			set rcvT [cmu-trace Recv "MAC" $self]
+		}
+		$rcvT target [$mac up-target]
+		$mac up-target $rcvT
+		if { $namfp != "" } {
+			$rcvT namattach $namfp
+		}
+		#
+		# Trace Dropped Packets
+		#
+		if {$imepflag != ""} {
+			set drpT [$self mobility-trace Drop "MAC"]
+		} else {
+			set drpT [cmu-trace Drop "MAC" $self]`
+		}
+		$mac drop-target $drpT
+		if { $namfp != "" } {
+			$drpT namattach $namfp
+		}
+	} else {
+		$mac log-target [$ns set nullAgent_]
+		$mac drop-target [$ns set nullAgent_]
+	}
+
+	# ============================================================
+
+}
+------------------------------------------------------------------------------
+
+  
+  2. Create setPs in tcl/lib/ns-mobilenode.tcl.  This procedure should be placed
+     just below the setPr procedure (just for organization purposes)
+
+        # set sensing energy for sensor nodes
+        Node/MobileNode instproc setPs { val } {
+        	$self instvar netif_
+            if [info exists netif_(1)] {
+        	  $netif_(1) setSensePower $val
+            }
+        }
+
+
+STEP EIGHT - add the following if statement to the if(argc == 2) branch in
+  the Mac::command function in mac/mac.cc:
+
+		} else if (strcmp(argv[1], "adjust_index") == 0) {
+          // adjust_index is called from tcl/lib/ns-mobilenode.tcl in order to
+          // prevent the MacIndex count from incrementing twice after adding
+          // multiple interfaces to a sensor node
+            MacIndex--;
+            return (TCL_OK);
+
+
+STEP NINE - update the energy model components in mac/wireless-phy.cc and
+            mac/wireless-phy.h:
+
+  1. In the WirelessPhy constructor (search for "WirelessPhy::WirelessPhy()"),
+     create a new variable called Ps_consume_ and initialize it to .000001, with
+     the following line:
+     
+     Ps_consume_ = .000001;    // 1uJ drained power for sensing phenomena on
+                               // sensor nodes
+
+     For organization purposes, place that line just below the line which
+     initializes the Pr_consume_ variable.
+     
+     In wireless-phy.h, declare Ps_consume_ with:
+     
+     double Ps_consume_;
+
+  2. In the WirelessPhy::command function, look for the following if statement:
+  	       
+        } else if(argc == 3) {
+     
+     In that if structure, place the following conditional:
+     
+		} else if (strcasecmp(argv[1], "setSensePower") == 0) {
+			Ps_consume_ = atof(argv[2]);
+			return TCL_OK;
+
+      For organization purposes, that conditional should be placed below the
+      corresponding one for "setIdlePower".
+
+  3. In the WirelessPhy::sendUp function, replace the following line:
+        em()->DecrRcvEnergy(actual_rcvtime,Pr_consume_);
+
+     with these lines:
+     
+        // sensor nodes may spend energy to process detected phenomena        
+        if( hdr_cmn::access(p)->ptype() == PT_PHENOM ) {
+          em()->DecrRcvEnergy(actual_rcvtime,Ps_consume_);
+        }
+        else {
+                em()->DecrRcvEnergy(actual_rcvtime,Pr_consume_);
+        }
+
+
+NRL OLSR EXTENSIONS:
+
+One of the original motivations behind building the sensor network extensions
+into ns2 was to compare the behaviors of OLSR and AODV routing algorithms. 
+NRL's OLSR extension to ns-2 is available for download via CVS [2].  To check
+out all the nrlolsr files (from a linux box), type the following two commands:
+
+  cvs -d :pserver:anonymous@nrlolsr.pf.itd.nrl.navy.mil:/cvsroot/nrlolsr login
+  cvs -z3 -d :pserver:anonymous@nrlolsr.pf.itd.nrl.navy.mil:/cvsroot/nrlolsr co .
+
+The instructions for including nrlolsr extensions in ns2 are documented in
+nrlolsr/readme.
+
+
+CONCLUSION:
+
+This package contains the foundation code necessary to begin researching sensor 
+networks with ns-2.  Throughout the design, extra effort was taken to maximize
+modularity of new code and minimize the modifications needed in existing ns-2 
+code.  Our code is still under intensive development, and enhancements are
+continuously being added.  Any feedback from people who are trying to use our
+sensor network extensions for their own research would be greatly appreciated at
+<nrlsensorsim@pf.itd.nrl.navy.mil>.  Tweak and enjoy!
+
+BUGS:
+
+No bugs are presently known with the sensor network extensions to ns2, but they
+no doubt exist.  Please direct all bug reports to
+<nrlsensorsim@pf.itd.nrl.navy.mil>.
+
+
+FUTURE WORK:
+
+Much more effort should be made to improve how phenomenon emenates.  Presently,
+it follows the behavior of an 802.11 broadcast, configured with one of the
+following radio propagation models:
+  1. Free Space Model
+  2. Two Ray Ground Model
+  3. Shadowing Model 
+
+The first two models represent the communication range as an ideal circle whose
+boundary defines a constant limit on a signal's range.  The Shadowing model
+applies a more probabilistic means of determining whether a receiver on the
+boundary can receive the signal.  
+
+The radio propagation model should be extended to create a "phenomenon
+propagation model" which could specifically address the characteristics of
+various phenomenon available for sensor network simulations.
+
+
+REFERENCES:
+
+[1] The Network Simulator - ns-2, http://www.isi.edu/nsnam/ns/
+[2] NRL's OLSR extension to ns-2, http://pf.itd.nrl.navy.mil/projects/nrlolsr/
+
+</PRE>

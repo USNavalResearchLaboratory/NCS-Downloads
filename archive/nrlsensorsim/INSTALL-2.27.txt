@@ -1,0 +1,93 @@
+<PRE>
+TITLE: Installing NRL's Sensor Network extensions to NS-2.27
+
+AUTHOR: Ian Downard <nrlsensorsim@pf.itd.nrl.navy.mil>
+
+DATE: April 2004
+
+ABSTRACT:
+
+  These instructions describe how to install the code necessary for simulating
+  sensor networks in the Network Simulator, version 2.27, distributed by the
+  Information Sciences Institute at the USC School of Engineering [1]. 
+
+
+QUICK AND DIRTY INSTALLATION:
+
+  Download nrlsensorsim-2.27.tgz.
+
+  A script has been written to automatically patch the ns-2.27. That script is
+  called "patch_script-2.27.sh", and must be run from the nrlsensorsim-2.27/
+  directory, which in turn must be located in the same directory that has the
+  ns-allinone-2.27 directory.  So here's the procedure:
+
+    tar -xzvf ns-allinone-2.27.tgz
+    tar -xzvf nrlsensorsim-2.27.tgz
+    cd nrlsensorsim-2.27/
+    ./patch_script-2.27.sh
+    cd ../ns-allinone-2.27/
+    ./install
+
+
+  Our extensions to ns-2.27 do not yet include support for the NRLOLSR routing
+  algorithm.  If you desire NRLOSLR, download our patches for ns-2.26.
+
+
+PATCHING SUMMARY:
+
+Some of ISI's enhancements added to ns-2.27 were removed in order to force in
+compatibility with our sensor network extensions.  The side effects of our
+hacks are not yet understood.  Users should corroborate their simulation
+results as much as possible with earlier versions of ns.
+
+
+PATCHING DETAILS:
+
+Here are the problems I've fixed with ns-2.27 (first two are in mac/channel.cc):
+
+1. WirelessChannel::sendUp contains an else structure with list-based
+  improvements. I reverted that else structure back to what it was in 2.26. 
+  Without this  modification, PHENOM packets will never get received.
+
+
+2. WirelessChannel::updateNodesList contains a call to sortLists().  I removed
+  that call in order to fix a segmentation fault.
+
+
+3. The makefiles
+    ns-2.27/indep-utils/cmu-scen-gen/setdest/Makefile,
+    ns-2.27/indep-utils/webtrace-conv/conv/Makefile, and
+    ns-2.27/indep-utils/webtrace-conv/dec/Makefile,
+  needed to be modified in order to fix a bug in ISI's distribution.  The bug
+  caused a compile-time error that looked like this:
+
+  g++ -c -Dstand_alone -DSTL_NAMESPACE=@STL_NAMESPACE@  -o setdest.o setdest.cc
+  In file included from ../../../config.h:54,
+                   from setdest.h:5,
+                   from setdest.cc:57:
+  ../../../autoconf.h:85: Error: namespace `CPP_NAMESPACE' undeclared
+  setdest.cc:71:1: warning: "INFINITY" redefined
+  In file included from /usr/include/math.h:40,
+                   from setdest.cc:43:
+  /usr/include/bits/mathdef.h:35:1: warning: this is the location of the previous definition
+  make[1]: *** [setdest.o] Error 1
+  make[1]: Leaving directory `/home/iandow/netsim/ns-allinone-2.27/ns-2.27/indep-utils/cmu-scen-gen/setdest'
+  make[1]: Entering directory `/home/iandow/netsim/ns-allinone-2.27/ns-2.27/indep-utils/webtrace-conv/dec'
+
+  To fix the bug, edit ns-2.27/indep-utils/cmu-scen-gen/setdest/Makefile and 
+  change this line:
+    DEFINE = -Dstand_alone -DSTL_NAMESPACE=@STL_NAMESPACE@
+  to this line:
+    DEFINE = -Dstand_alone -DSTL_NAMESPACE=@STL_NAMESPACE@ -DCPP_NAMESPACE=std
+
+  In the other two makefiles, append  -DCPP_NAMESPACE=std  to CFLAGS.
+
+  I discovered that fix by searching the NS news database[2] for
+    "CPP_NAMESPACE".
+
+
+REFERENCES:
+
+[1] The Network Simulator - ns-2, http://www.isi.edu/nsnam/ns/
+[2] NS news database, http://www.isi.edu/nsnam/htdig/search.html
+</PRE>

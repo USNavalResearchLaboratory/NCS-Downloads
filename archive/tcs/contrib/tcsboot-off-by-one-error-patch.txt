@@ -1,0 +1,31 @@
+The patch fixes an off-by-one error when remote systems are checking in with
+the master.  The daemon now allocates the correct amount of memory for a
+system hostname.
+
+Ben Stern
+-- Benjamin A. Stern Fortian Inc. www.fortian-inc.com
+
+Index: tcsboot.c
+===================================================================
+RCS file: /mnt/remote/cvsroot/tcsboot/tcsboot.c,v
+retrieving revision 1.1.1.1
+diff -u -r1.1.1.1 tcsboot.c
+--- tcsboot.c	26 Oct 2007 04:38:25 -0000	1.1.1.1
++++ tcsboot.c	26 Oct 2007 04:44:21 -0000
+@@ -256,14 +256,11 @@
+ #if 0
+         syslog(LOG_DEBUG, "Learnt nodename %s", buf);
+ #endif
+-        l = strlen(buf);
+-        name = malloc(l);
++        name = strdup(buf);
+         if (name == NULL) {
+             rv = errno;
+-            syslog(LOG_ERR, "Could not malloc name: %m");
++            syslog(LOG_ERR, "Could not duplicate name: %m");
+             return rv;
+-        } else {
+-            strcpy(name, buf);
+         }
+     }
+ 

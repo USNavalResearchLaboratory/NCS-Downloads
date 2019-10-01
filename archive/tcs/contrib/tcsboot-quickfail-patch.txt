@@ -1,0 +1,63 @@
+The default behavior of tcsboot 1.0 is that for hosts that should not netboot,
+it does not provide a DHCP lease.  The result is that the host.s attempt to
+netboot will time out waiting for a DHCP response and (in the usual
+configuration) it will fail over to booting from the local disk.  One problem
+with this approach is that the timeout can take a while.  For example, on Sun
+Fire X2100 machines, the default behavior on at least the nVidia network
+adapter is to wait five minutes for a DHCP reply.  (There may be a way to
+adjust that, but it wasn.t immediately obvious to me.)
+
+The attached patch (against tcsboot-1.0) modifies the tcsboot program so that
+instead of withholding a DHCP response, the DHCP server responds and assigns
+an address, but points the client to a nonexistent boot image.  In our
+testbed, at least (Dell Dimension 3000 & 3100 and Sun Fire X2100 hosts), this
+causes a quick failover to booting from local disk.
+
+- Darrell Kindred
+  SPARTA, Inc.
+  11 Nov 2007
+
+diff -r 561fde6ad849 -r 38e031d802a3 tcsboot.c
+--- a/tcsboot.c	Thu Nov 01 22:56:20 2007 -0400
++++ b/tcsboot.c	Fri Nov 02 09:50:52 2007 -0400
+@@ -183,11 +183,17 @@ int process(void) {
+                 "%s;\n\t\t\tfixed-address %s;\n\t\t}\n", iter->name, iter->mac,
+                 iter->ip);
+         } else {
+-#ifdef UNKNOWN_DENIED
++#ifdef UNKNOWN_GIVE_BOGUS_FILENAME
++            snprintf(line, BUFSIZ, "\t\thost %s {\n\t\t\thardware ethernet "
++                "%s;\n\t\t\tfixed-address %s;\n\t\t\tfilename \"%s\";\n\t\t}\n",
++                iter->name, iter->mac, iter->ip, "/nosuchfile");
++#else
++# ifdef UNKNOWN_DENIED
+             line[0] = 0;
+-#else
++# else
+             snprintf(line, BUFSIZ, "\t\thost %s {\n\t\t\thardware ethernet "
+                 "%s;\n\t\t\tdeny booting;\n\t\t}\n", iter->name, iter->mac);
++# endif
+ #endif
+         }
+         line[BUFSIZ] = 0;
+diff -r 561fde6ad849 -r 38e031d802a3 tcsboot.h
+--- a/tcsboot.h	Thu Nov 01 22:56:20 2007 -0400
++++ b/tcsboot.h	Fri Nov 02 09:50:52 2007 -0400
+@@ -34,9 +34,16 @@
+ /* Indicates where we can start to rewirte the dhcpd.conf. */
+ #define NOEDIT "# DO NOT EDIT BELOW THIS LINE\n"
+ 
++/* Define this to grant leases to non-netbooting hosts but point them
++    to a nonexistent boot image.  This will sometimes allow a faster
++    netboot failure. */
++#define UNKNOWN_GIVE_BOGUS_FILENAME
++
+ /* If your dhcpd.conf has "deny unknown-clients;" as it ought, define the next
+     line to leave out non-netbooting hosts from the dhcpd.conf (and thereby
+-    make it easier to read for humans. */
++    make it easier to read for humans).
++    NOTE: This is only effective if UNKNOWN_GIVE_BOGUS_FILENAME is undefined.
++ */
+ #define UNKNOWN_DENIED
+ 
+ /* You should not normally need to edit anything below this line. */

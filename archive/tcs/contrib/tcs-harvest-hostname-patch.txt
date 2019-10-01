@@ -1,0 +1,79 @@
+This patch introduces a new tcs.cfg parameter, .MANTIS_HARVEST_HOSTNAME.,
+which allows log data harvested at Level 5 to be shipped to some host other
+than the primary file server.  Of course this host must have an appropriately
+configured rsync daemon running.
+
+- Darrell Kindred (at sparta.com), 25 Oct 2007
+
+diff -r 89562f5d32c4 -r e2dcf49e0457 src/java/mil/navy/nrl/itd/tcs/ConfigFileParser.java
+--- a/src/java/mil/navy/nrl/itd/tcs/ConfigFileParser.java	Tue Oct 23 14:29:03 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/ConfigFileParser.java	Wed Oct 24 13:13:35 2007 -0400
+@@ -53,6 +53,10 @@ public class ConfigFileParser extends Me
+          {
+             nomad.getMantis().setFileServerHostname(token);
+          }
++         else if (currentName.equals("MANTIS_HARVEST_HOSTNAME"))
++         {
++            nomad.getMantis().setHarvestHostname(token);
++         }
+          else if (currentName.equals("MANTIS_DHCP_SERVER_HOSTNAME"))
+          {
+             nomad.getMantis().setDHCPServerHostname(token);
+diff -r 89562f5d32c4 -r e2dcf49e0457 src/java/mil/navy/nrl/itd/tcs/Mantis.java
+--- a/src/java/mil/navy/nrl/itd/tcs/Mantis.java	Tue Oct 23 14:29:03 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/Mantis.java	Wed Oct 24 13:13:35 2007 -0400
+@@ -17,6 +17,7 @@ public class Mantis implements Serializa
+    private String _path;
+    
+    private String _fileServerHostname;
++   private String _harvestHostname;
+    private String _dhcpServerHostname;
+    private String _consoleHostname;
+    
+@@ -34,6 +35,7 @@ public class Mantis implements Serializa
+       _path = null;
+ 
+       _fileServerHostname = null;
++      _harvestHostname = null;
+       _dhcpServerHostname = null;
+       _consoleHostname = null;
+ 
+@@ -96,6 +98,14 @@ public class Mantis implements Serializa
+       _fileServerHostname = fileServerHostname;
+    }
+    
++   public String getHarvestHostname() {
++      return _harvestHostname;
++   }
++   
++   public void setHarvestHostname(String harvestHostname) {
++      _harvestHostname = harvestHostname;
++   }
++   
+    public String getDHCPServerHostname() {
+       return _dhcpServerHostname;
+    }
+diff -r 89562f5d32c4 -r e2dcf49e0457 src/java/mil/navy/nrl/itd/tcs/TaskUtilities.java
+--- a/src/java/mil/navy/nrl/itd/tcs/TaskUtilities.java	Tue Oct 23 14:29:03 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/TaskUtilities.java	Wed Oct 24 13:13:35 2007 -0400
+@@ -446,7 +446,7 @@ public class TaskUtilities
+       newTask.setSourceHostname(srcHostname);
+       newTask.setCommand("/usr/bin/rsync -rLxHpogDtSP --progress --stats " +
+          "/mantis/archive/ " +
+-         nomad.getMantis().getFileServerHostname() + "::archive/");
++         nomad.getMantis().getHarvestHostname() + "::archive/");
+       return newTask;
+    }
+    
+diff -r c3f2f4901d85 -r bcc48959567c config/tcs.cfg
+--- a/config/tcs.cfg	Wed Oct 24 13:15:09 2007 -0400
++++ b/config/tcs.cfg	Wed Oct 24 17:26:00 2007 -0400
+@@ -13,5 +13,8 @@ MANTIS_DHCP_SERVER_HOSTNAME = control
+ MANTIS_DHCP_SERVER_HOSTNAME = control
+ MANTIS_CONSOLE_HOSTNAME = control
+ 
++# Host to send harvest data to
++MANTIS_HARVEST_HOSTNAME = control
++
+ # Base Project Path
+ MANTIS_PROJECTS_PATH = /home/mantis/mantis_projects/project_name/

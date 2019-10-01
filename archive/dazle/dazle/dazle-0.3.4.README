@@ -1,0 +1,433 @@
+DAZLE has been written and tested under RedHat Linux Enterprise 3
+DAZLE version 0.3.4 (08/25/2004)
+
+TO INSTALL DAZLE: 
+
+   You may install Dazle one of two ways.  You can install Dazle
+   via an RPM file, or you can compile the source code on your
+   machine and then install.
+
+TO INSTALL DAZLE VIA THE RPM FILE
+
+1. You must first install wxGTK-2.4.2-1.  This package 
+   is freely available at www.wxwindows.org.  The RPM file to
+   download and install is wxGTK-2.4.2-1.i386.rpm.  Dazle also
+   requires you to install gnuplot.  This package is freely
+   available at www.gnuplot.info.
+
+2. Download the Dazle RPM file Dazle-0.3.4-1.i386.rpm from 
+   http://downloads.pf.itd.nrl.navy.mil/dazle/dazle/
+
+3. From the root account, type
+
+      rpm -U Dazle-0.3.4-1.i386.rpm
+
+   This installs the Dazle executables, and installs this 
+   README file in /usr/local/dazle
+   
+TO INSTALL DAZLE VIA MAKE INSTALL
+
+1. You must first install wxGTK-2.4.2-1 and wxGTK-devel-2.4.2-1.  
+   These packages are freely available at www.wxwindows.org.  The RPM 
+   files to download and install are wxGTK-2.4.2-1.i386.rpm and
+   wxGTK-devel-2.4.2-1.i386.rpm.  Dazle also requires you to install
+   gnuplot.  This package is freely available at www.gnuplot.info.
+
+2. Download the Dazle tarball file dazle_0.3.4.tgz from 
+   http://downloads.pf.itd.nrl.navy.mil/dazle/dazle/
+
+1. Unpack the tarball file to where you want to place the Dazle 
+   installation directory.
+   (e.g., /opt/dazle   OR  /home/youraccount/dazle);
+
+2. Compile the dazbin and dazprint programs by going to the 
+   ~/dazle directory and typing at the command line the command:
+
+      make
+
+3. Become the super-user and at the command line, type the command:
+
+      make install
+
+   This installs the Dazle commands in /usr/local/bin.  If you want
+   to install the Dazle commands in an alternate directory, use the
+   make prefix=<alternat installation directory> option.
+
+TO USE DAZLE IN THE NETTION ENVIRONMENT
+
+Note: DAZLE does not require a particular directory structure
+      where MGEN scripts and DREC log files must be located.  The
+      config.dazle file can be created to accommodate many types of
+      organizational structures.  DAZLE creates its own results directory
+      structure within and below the DAZLE post-processing directory.
+      This directory structure is specific to DAZLE and must not be
+      altered for DAZLE to work properly. 
+
+      The Nettion environment has a pre-defined directory structure where
+      the MGEN scripts and log files are located.  The Nettion default
+      directory structure is as follows:  
+
+                              ~user/projects
+                                    |
+                                    |
+                              <project_name>
+                                    |
+                                    |
+                             <scenario_name>
+                                    |
+                                    |
+                           <scenario_run_label>
+                                    |
+                                    |
+            ----------------------------------------------
+            |                |                           |
+            |                |                           |
+           data           scripts                      results
+            |                |                           |
+            |                |                           |
+       <node_name>      <node_name>            ----------------------
+            |                |                 |    |    |     |
+            |                |                 |    |    |     |
+         drec.log      <script>.mgen   config.dazle |    |     |
+                                                    |    |     |
+                                      dazNodelist.config |     |
+                                                         |     |
+                                          dazWindowsets.config |
+                                                               |
+                                            dazFlowdefinitions.config
+
+      Location of drec.log files:
+      ~projects/<project_name>/<scenario_name>/<scenario_run_label>/
+       data/<node_name>/drec.log
+      (e.g., ~projects/NRL_FCS/test_1/2002-9-5_1000AM/data/Node 10/drec.log)
+
+      Location of MGEN scripts and configuration files:
+      ~project/<project_name>/<scenario_name>/<scenario_run_label>/
+       scripts/<node_name>/<mgen_script>
+      (e.g., ~projects/NRL_FCS/test_1/2002-9-5_1000AM/scripts/XCom/XCom-0.mgen)
+
+RUNING DAZLE USING THE GUI (QUICK START)
+
+1.  Run the command "dazle".
+
+2.  Select File->Open if you are running under Nettion where nettion has 
+    automatically generated a config.dazle file for you.  Navigate to the
+    config.dazle file associated with your test, select it, then select OK.
+    If you are not running under Nettion and you do not have a program that
+    has generated the config.dazle file for you, select File->New from the 
+    menue.  Navigate to the location where you want to save your results,
+    then press "Select Directory" or "Crieate Results Directory".
+
+3.  Edit the test setup using the Edit->Test_Setup menu item.
+
+    a. Under the "General Settings" tab, fill in the "Project", "Test", 
+       "Date", and "Time" fields.  These fields are not mandatory, but
+       they are used to label all the plots and tables generated by Dazle.
+
+       IMPORTANT: YOU CANNOT USE COMAS WITHIN ANY OF THE FIELD VALUES.
+
+    b. Under the "Node List" tab, select "View/Edit Node List" to assign a
+       label to each IP address used in the test.
+    
+    c. Under the "Flow Labels" tab, select "View/Edit Flow Labels" to assign
+       labels to flows.  When Dazle processes the script or data log files,
+       it will assign a label to each flow that matches the on of the Flow 
+       Label descriptions in the Flow Labels table.  Flows that do not match
+       any of the flows in the Flow Labels table will be assigned the default
+       label "generic".
+
+    d. Under the "MGEN Script Files" tab, add the MGEN script files (with their 
+       associated hosts) for all scripts run by all the nodes in the test.
+       (Dazle supports only MGEN version 4 scripts).
+
+    e. Under the "MGEN Log Files" tab, add the MGEN log files (with their
+       associated hosts) for all the nodes that were part of the test.
+       (Dazle supports only MGEN version 4 log files).
+
+    f. When steps (a-e) have been completed, select "OK" in the "Dazle Test 
+       Setup" panel.
+
+4.  Execute "Analysis->Genereate reference statistics..."  This will generate
+    the reference statistics for the test, and the process may take a couple of
+    minutes to more than 15 minutes depending on the amount of data found in
+    the log files.
+
+5.  Select "Analysis->Genereate HTML report...", highlight the "start_to_finish"
+    windowing scheme, then select "Generate Report".  This will generate the
+    HTML browsable plots and tests for the thest.  This may also take from 2 to
+    15 or more minutes depending on the number of flows, duration, and number
+    of statistics calculated for the test.
+
+6.  When the process that generates the HTML report has completed successfully,
+    you can view the HTML report by opening the newly generated index.html file
+    that has been placed in the results directory.
+
+
+CREATING THE CONFIG.DAZLE FILE (NON-GUI METHOD)
+
+1.  When using Dazle from within the Nettion environment, the config.dazle
+    file will automatically be generated for you by Nettion.  However, if 
+    you are not using Dazle from the Nettion control panel, or if there is a
+    problem with the auto-generated config.dazle file, you may need to 
+    manually create or edit the config.dazle file.
+
+2.  Purpose of the config.dazle file: The config.dazle file is used to
+    instruct Dazle on where all the MGEN script files and all the MGEN log 
+    files are located, so that Dazle can process the data.
+    A config.dazle file should include the following commands:
+
+    project_label, <a text string identifying the project*>
+
+    test_label, <a text string identifying the test scenario*>
+
+    test_date, <a text string identifying the date of the test*>
+
+    test_time, <a text string identifying the time of the test*>
+
+    nodelist_file, <Path to a dazNodelist.config file**>
+
+    flowdefintions_file, <Path to a dazFlowDefintions.config file***>
+
+    mgen_script, <path to an MGEN script>, <nodename that ran this MGEN script>
+               (repeat "mgen_script" command for all scripts used) 
+
+    mgen_log, <path to an MGEN logfile>, <nodename that created this MGEN log>
+               (repeat "mgen_log" command for all created logfiles) 
+
+    Notes:
+
+    * Although the "test_label", "test_date" and "test_time" commands are not
+      required, they are useful in that they are used to automatically label 
+      the plots and tables generated by Dazle.
+
+    ** The nodelist file should contain a series of lines, each containing 
+       a node's IP address and a name to be associated with that IP address.
+       (e.g.:
+       132.250.14.12, node_01
+       )
+
+    *** Although a "dazFlowDefinitions.config" is not required, it is 
+        recommended.  The format of the flowdefinitions file is provided
+        in the Dazle Users Guide.  If no flowdefinitions file is provided, or 
+        if the flow definitions in the flowdefinitions file do not match the 
+        flows in the script or log files, then the unmatched flows will be given
+        the flow label "generic".
+
+    **** No labels, names, paths, etc., should contain comas (,) because
+         comas are used for the parsing of the configuration files.  Use of
+         comas may result in undefined behavior.
+
+    IMPORTANT: YOU CANNOT USE COMAS IN ANY OF THE FIELD VALUES BECAUSE DAZE
+               WILL INTERPRET THIS AS AN END-OF-FIELD SYMBOL.
+
+3.  An example of a config.dazle file is offered here:
+
+    test_label, Project X - Scenario 1
+    test_date, 01-25-2003
+    test_time, 08:34:00
+    nodelist, dazNodelist.config
+    flowdefinitions, dazFlowDefinitions.config
+    mgen_script, ../scripts/Node_01.mgen, Node_01
+    mgen_script, ../scripts/Node_02.mgen, Node_02
+    mgen_script, ../scripts/Node_03.mgen, Node_03
+    mgen_script, ../scripts/Node_04.mgen, Node_04
+    mgen_script, ../scripts/Node_05.mgen, Node_05
+    mgen_log, ../data/Node_01/mgen.log, Node_01
+    mgen_log, ../data/Node_02/mgen.log, Node_02
+    mgen_log, ../data/Node_03/mgen.log, Node_03
+    mgen_log, ../data/Node_04/mgen.log, Node_04
+    mgen_log, ../data/Node_05/mgen.log, Node_05
+
+
+TO PROCESS THE DATAFILES FROM THE COMMAND LINE AND VIEW THE ANALYSIS RESULTS
+
+1.  Create a new directory somewhere on your computer where you want 
+    to place the analysis results of a particular test run. 
+    
+    For the Nettion environement:
+    Create a directory called "result" at the location:
+    "~nettion/projects/<project name>/<scenario>/<run>/results"
+    appropriate for the project, scenario, and test run you want 
+    to obtain results for.
+    (e.g. /home/nettion/projects/Project_X/1/2001-11-9_0830.00/results).
+    There should be two sub-directories at the same level as the
+    "results" sub-directory you create, one called "data" and the 
+    other called "scripts".
+
+2.  Change directories to the "results" directory (i.e., cd results),
+    and create a "config.dazle" file.  You must make sure that the 
+    MGEN scripts, the MGEN log files, the node list file, the
+    flow label definitions file (if you have one), and the 
+    windowset definitions file (if you have one) are located
+    in the exact paths specified in your config.dazle file.
+
+    For the Nettion environment:
+    The config.dazle file is created for you if your are using
+    Nettion/Egret as your scenario generation tool. Copy the
+    config.dazle file created by Nettion/Egret to the "results"
+    directory.
+
+3.  From winthin the results sub-directory, run the command:
+
+    dazrun.pl -first
+
+    This command may take a while to run, depending on how much data 
+    is present in the MGEN log files and the number of unique flows 
+    that are present in the test scenario.  After the successful
+    completion of this command, a file called "index.html" will be
+    created and will be places in the "results" directory.  Open
+    this file with a HTML browser to view the results.  For additional
+    options for running the dazrun.pl script, type dazrun.pl with
+    the '-help' option.
+
+    If you only want to process the MGEN script files (so you can view 
+    the MGEN script traffic patterns) because you do not have any MGEN log 
+    files from an actual test, you can run the following command:
+
+    dazrun.pl -first -scripts_only HH:MM:SS
+
+    where HH:MM:SS is the end time of the scenario scripts you want to 
+    set for processing the MGEN scripts.  Type dazrun.pl with the '-help'
+    option for more information.
+   
+
+
+(The remaining sections explain how to obtain results without using
+ the dazrun.pl script)
+
+
+TO PROCESS THE DATAFILES (within the nettion environment)
+
+1.  Go the test's run directory 
+    (e.g. /home/nettion/projects/FCS_NRL/1/2001-11-9_0838.59/).
+    There should be two sub-directories, one called "data" and the
+    other called "scripts".
+
+2.  Create a subdirectory called "results" (i.e., mkdir results)
+
+3.  Change directories to the "results" directory (i.e., cd results),
+    and create or copy the "config.dazle" file to the results directory.
+    Note that a config.dazle file is created for you if your are using
+    Nettion/Egret as your scenario generation tool.
+    (You must make sure that the MGEN scripts and log files are located
+    in the directories specified in your config.dazle file).
+
+4.  From within the results sub-directory, run the command:
+
+    dazbin -f config.dazle > runlog 2>&1
+
+    This runs the dazbin program and saves all the console/error messages to
+    the file called runlog so that you can review it if there are any errors.
+    If your are only processing MGEN script files (i.e., you don't have any
+    log files to process but you want to see the offered traffic, your will 
+    need to use the -max_time HH:MM:SS option in order to get dazbin to run 
+    properly.  Running dazbin may take up to several minutes to run depending 
+    on the speed of your machine.  Once dazbin is complete, it puts a number 
+    of text and *.config files in the working directory.
+
+TO GENEATE START-TO-FINISH RESULTS (after dazbin has run)
+
+1.  From within the results directory, type the command:
+
+    newwindowscheme.pl start_to_finish
+
+    This is a perl script that creates a number of sub-directories and 
+    copies the necessary configuration files in those directories.
+
+    Note: The script will warn you if it tries to overwrite existing files.
+    To dissable this checking, run newwindowscheme.pl with the -f option
+    as follows:
+
+    newwindowscheme.pl start_to_finish -f
+
+2.  To create the tabular "start_to_finish" statistics, you must go to 
+    (i.e., cd) the "start_to_finish" sub-directory that the
+    newwindowscheme.pl script created, then from within this
+    sub-directory, execute the following commands:
+
+    dazprint -f dazPrint.config
+
+3.  If you ONLY wanted to creat "start_to_finish" tabular statistics 
+    related to the MGEN traffic (i.e., you only want to process MGEN
+    scripts, not MGEN log files), go to "start_to_finish" sub-directory
+    and execute the following commands:
+
+    dazprint -f dazPrintMGEN.config
+
+    (You may chose to process only the "dazPrintInOutMGEN.config" file if
+    you just want to look at the offered traffic from the MGEN scripts.  
+    It may be useful to look at the MGEN scripts before running a test
+    to verify the scripts.)
+
+
+    TO GENERATE PLOTS 
+
+4.  To create plots of the performance statistics, go to the 
+    "start_to_finish" sub-directory, and execute the following
+    command:
+
+    dazprint -f dazPlot.config
+
+5.  If you ONLY want to create the plots of the MGEN traffic injected 
+    into the network (i.e., you only want to plot the MGEN scripts, not the
+    MGEN log files), go to the "start_to_finish" sub-directory and  
+    execute the following command:
+
+    dazprint -f dazPlotMGEN.config
+
+    This command may take several minutes to run, depending on how fast 
+    your CPU is and how many plots are generated.
+
+TO GENERATE TIME-WINDOWED RESULTS (NON-GUI METHOD)
+
+1.  From within the results directory, run the command:
+
+    newwindowscheme.pl <windowset scheme name>
+
+    For example, you could call the windowset scheme "window_1_results" 
+    or "10-120_min_window".
+
+    This perl script creates a number of sub-directories and 
+    copies the necessary configuration files in those directories.
+
+2.  Edit the "dazWindowsets.config" configuration file to define the 
+    window-sets that you want to use in your analysis.
+
+3.  Go to the <windowset scheme name> sub-directory that was created by 
+    the newwindowscheme.pl scrip.  
+
+    Edit the "dazWindowsetsScheme.config" configuration file to define the 
+    window-set scheme that you want to use in your analysis.
+    Note: A windowset scheme allows you to assign different windowsets to 
+    each flow in the test.
+
+4.  run the dazprint command in the same manner as described in the 
+    "start_to_finish" section.
+
+
+TO GENERATE HTML BROWSABLE RESULTS
+
+1.  After you have followed all the steps decribed above and successfully
+    generated plots and tabular results, go to the top level "results" 
+    directory, and execute the following command:
+
+    dazhtml.pl
+
+    This command generates the necessary files for browsing through the 
+    results. It places an "index.html" file in the main results directory.
+    Open this file with a javascript enabled browser to view the results.  
+    You mus used Nescape 7, Mozilla 1.0.1, or IE 6, or later versions of 
+    these browsers for the browsing functions to work.  Earlier versions 
+    will of these browsers will not work.
+
+KNOWN BUGS
+
+    Dazle currently does not properly handle MGEN log files that run 
+    accross the midnight time boundary.
+
+    
+
+
+
+
+

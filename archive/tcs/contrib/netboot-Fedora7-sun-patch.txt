@@ -1,0 +1,605 @@
+Attached is a diff to create the current version of netboot.pl, which is
+capable of deploying Fedora 7 on Sun x2100 and x4100 systems.
+
+It presumes that TNs are x2100s and that MANEs are x4100s.  Generally
+speaking, this should be used for TNs normally, but may be used to bring a
+bare-metal x4100 to the point of running an operating system.
+
+You will need:
+    a miniroot
+    a netboot-capable kernel
+    a DHCP server
+    a TFTP server
+    an NFS server
+    a running tcsboot binary
+    at least one rsync server with suitable images
+
+Significant changes:
+    A check for Fedora 7
+    Reconfiguration for the new IP addressing scheme
+    Grub fixes for the Sun/FC7 deploy
+    Identification of multiple ethernet interfaces
+
+This netboot.pl belongs in /root in the miniroot, just as before.
+
+Ben
+-- Benjamin A. Stern Fortian Inc. www.fortian-inc.com 
+
+Index: netboot.pl
+===================================================================
+RCS file: /mnt/remote/cvsroot/tcsboot/netboot.pl,v
+retrieving revision 1.1.1.1
+diff -u -r1.1.1.1 netboot.pl
+--- netboot.pl	26 Oct 2007 04:38:25 -0000	1.1.1.1
++++ netboot.pl	26 Oct 2007 18:32:50 -0000
+@@ -1,26 +1,26 @@
+ #!/usr/bin/perl -w
+ 
+-# $Id: netboot.pl,v 1.1.1.1 2007/10/26 04:38:25 bstern Exp $
++# $Id: netboot.pl,v 1.12 2005/10/04 14:49:50 bstern Exp $
+ 
+ use Sys::Hostname;
+ use Socket;
+ # use Data::Dumper;
+ use strict;
+ 
+-my $DEV = 'hda'; # Which device are we stomping on?
++my $DEV = 'sda'; # Which device are we stomping on?
+ my $NETBOOT_CONF = "/netboot.conf"; # From the NFS root POV, where is config?
+ my $PORT = 31678; # Where does tcsboot listen for successful boot indication?
+ 
+ ## my $PARTED = "/sbin/parted -s";
+ #my $DD = "/bin/dd bs=512b if=/dev/zero";
+ my $DD = "/bin/dd if=/dev/zero";
+-my $RSYNC = "/usr/bin/rsync -rzlxHpogDtSP --progress --stats"; # --rsh=ssh";
++my $RSYNC = "/usr/bin/rsync -rzlxHpogDtS --partial"; # -v --progress --stats --rsh=ssh";
+ 
+ # Side note: The 60GB hard drives we are using are 117210240 blocks large.
+ # 117210240 blocks = (2^7 * 3^4 * 5 * 7 * 17 * 19) blocks * 2^9 bytes/block
+ 
+ # Local variables.
+-my ($hwaddr, $wipedisk, %chgpart, %parts, @curparts, $rv, @fsli);
++my (%hwaddr, $wipedisk, %chgpart, %parts, @curparts, $rv, @fsli);
+ my %newpars = ();
+ my $nbh;
+ 
+@@ -37,7 +37,7 @@
+     print $msg;
+     print "\033[0;39m\n";
+     if ($level eq 'fail') { sleep 5; exit 1; }
+-    # elsif ($level eq 'warn') { sleep 2; }
++    elsif ($level eq 'warn') { sleep 2; }
+ }
+ 
+ sub checkpoint($;$) {
+@@ -48,8 +48,9 @@
+ 
+     showmsg('success', $nbh, 'Checking in with remote server');
+     socket(NBH, PF_INET, SOCK_STREAM, 0) or
+-        showsmg('fail', $!, 'Could not open socket:');
++            showmsg('fail', $!, 'Could not open socket:');
+     connect NBH, $paddr or showmsg('fail', $!, 'Could not connect:');
++    # showmsg('success', length $name, "Packing $name as:");
+     my $hid = pack('C', length $name);
+     print NBH $hid;
+     print NBH $name;
+@@ -64,18 +65,41 @@
+     my $i = shift;
+     my $ft = lc $newpars{$i}{'fstype'};
+     my $opt = $newpars{$i}{'fsopts'};
++    my $fr = '/etc/fedora-release';
++    my $dev = $DEV;
++
++    if (-f "/mnt/dc$fr") {
++        if (open FEDREL, "</mnt/dc$fr") {
++            my $line = <FEDREL>;
++            my @words = split ' ', $line;
++            if (defined $words[2] and $words[2] eq 7) {
++                showmsg('success', $fr, 'Found release 7 in');
++                $dev =~ s/^h/s/; # FC7 thinks these disks are SCSI/SATA
++                ## $DISTVER = 7;
++            } elsif (defined $words[3] and $words[3] eq 3) {
++                showmsg('success', $fr, 'Found release 3 in');
++                # DNGN
++            } else {
++                showmsg('warn', 'assuming 3', "Could not understand $fr,");
++            }
++            close FEDREL;
++        } else {
++            showmsg('warn', $!, "Could not open (/mnt/dc)$fr:");
++        }
++    } else {
++        showmsg('warn', 'assuming FC3', 'Unknown distribution,');
++    }
+ 
+     showmsg('success', '/etc/fstab', 'Fixing up');
+     $opt =~ s/;/,/g; # fix the options line
+     open FSTAB, ">/mnt/dc/etc/fstab" or
+         showmsg('fail', $!, 'Could not open (/mnt/dc)/etc/fstab:');
+-    print FSTAB qq|LABEL=/\t/\t$ft\t$opt\t1 1
++    print FSTAB qq|LABEL=/\t/\text3\tdefaults\t1 1
+ none\t/dev/pts\tdevpts\tgid=5,mode=620\t0 0
+ none\t/dev/shm\ttmpfs\tdefaults\t0 0
+ none\t/proc\tproc\tdefaults\t0 0
+ none\t/sys\tsysfs\tdefaults\t0 0
+ |;
+-# pulled #/dev/hdc       /media/cdrecorder   auto  pamconsole,fscontext=system_u:object_r:removable_t,ro,exec,noauto,managed  0 0
+     print "Adding variable partitions...\n";
+     foreach my $j (@fsli) {
+         my $mp = $newpars{$j}{'mountpoint'};
+@@ -84,9 +108,9 @@
+         my $jf = $newpars{$j}{'fstype'};
+         next if $jf ne 'swap' and $jf ne 'ext2' and $jf ne 'ext3';
+         if ($jf ne 'swap') {
+-            print FSTAB "LABEL=$mp\t\t$mp\t\t$jf\t$d\t1 2\n";
++            print FSTAB "/dev/$dev$j\t\t$mp\t\t$jf\t$d\t1 2\n";
+         } else {
+-            print FSTAB "LABEL=SWAP-$DEV$j\tswap\t\tswap\t" .
++            print FSTAB "/dev/$dev$j\tnone\t\tswap\t" .
+                 "defaults\t0 0\n";
+         }
+         showmsg('success', $mp, 'Adding:');
+@@ -94,70 +118,128 @@
+     close FSTAB;
+ }
+ 
+-sub fixsyscfg($$) {
+-    my ($a, $n) = @_;
+-    my @hnp;
++sub fixsyscfg($) {
++    my $n = shift;
++    # my @hnp;
+     my $i;
++    my $type;
++
++    ## $n =~ s/-ctrl//; # in case someone used a weird name
++    ## @hnp = split(/-/, $n);
++    ## $i = pop @hnp;
++	if ($n =~ /([A-Za-z0-9]+)-(\d+)-ctrl/) {
++        $type = $1;
++        $i = $2;
++    } else {
++        showmsg('fail', $n, "Could not determine IP from name:");
++    }
+ 
+-    $n =~ s/-ctrl//; # in case someone used a weird name
+-    @hnp = split(/-/, $n);
+-    $i = pop @hnp;
+-
+-    $i = 161 if $i eq 'alpha';
+-    $i = 162 if $i eq 'bravo';
+-    $i = 163 if $i eq 'charlie';
+-    $i = 164 if $i eq 'delta';
+-    $i = 165 if $i eq 'echo';
+-    $i = 166 if $i eq 'foxtrot';
+-    $i = 167 if $i eq 'golf';
+-    $i = 168 if $i eq 'hotel';
+-    $i = 169 if $i eq 'india';
+-    $i = 170 if $i eq 'juliet';
+-    $i = 171 if $i eq 'kilo';
+-    $i = 172 if $i eq 'lima';
++    # $i = 161 if $i eq 'alpha';
++    # $i = 162 if $i eq 'bravo';
++    # $i = 163 if $i eq 'charlie';
++    # $i = 164 if $i eq 'delta';
++    # $i = 165 if $i eq 'echo';
++    # $i = 166 if $i eq 'foxtrot';
++    # $i = 167 if $i eq 'golf';
++    # $i = 168 if $i eq 'hotel';
++    # $i = 169 if $i eq 'india';
++    # $i = 170 if $i eq 'juliet';
++    # $i = 171 if $i eq 'kilo';
++    # $i = 172 if $i eq 'lima';
++    # $i = 132 if $i eq 'BAE-1';
++    # $i = 135 if $i eq 'BAE-5';
++    # $i = 180 if $i eq 'utransfer';
+     showmsg('fail', 'Invalid hostname', 'Could not determine IP from name:')
+         unless defined $i and ($i =~ /\d+/);
+     
+-    open NETW, ">/mnt/dc/etc/sysconfig/network" or
++    open NETW, '>/mnt/dc/etc/sysconfig/network' or
+         showmsg('fail', $!, 'Could not open .../etc/sysconfig/network:');
+-    print NETW "NETWORKING=yes\nHOSTNAME=$n\nNOZEROCONF=1\n" or
++    print NETW "NETWORKING=yes\nHOSTNAME=$type-$i\nNOZEROCONF=1\n" or
+         showmsg('fail', $!, 'Could not write to .../etc/sysconfig/network:');
+     close NETW or
+         showmsg('fail', $!, 'Could not close .../etc/sysconfig/network:');
+ 
+-    open CFGE, ">/mnt/dc/etc/sysconfig/network-scripts/ifcfg-eth0" or
+-        showmsg('fail', $!, 'Could not open ifcfg-eth0 for writing:');
+-    print CFGE "DEVICE=eth0\nONBOOT=yes\nBOOTPROTO=static\nIPADDR=192.168.3." or
+-        showmsg('fail', $!, 'Could not write to ifcfg-eth0:');
+-    print CFGE sprintf("%d\nNETMASK=255.255.255.0\nGATEWAY=0.0.0.0\n", $i) or
+-        showmsg('fail', $!, 'Could not write IP to ifcfg-eth0:');
+-    print CFGE "HWADDR=$a\n" or
+-        showmsg('fail', $!, 'Could not write MAC to ifcfg-eth0:');
+-    close CFGE or showmsg('fail', $!, 'Could not close ifcfg-eth0:');
+-
+-    open HOSTSO, "</mnt/dc/etc/hosts" or
+-        showmsg('fail', $!, 'Could not open .../etc/hosts for read:');
+-    open HOSTSN, ">/mnt/dc/etc/hosts.$$" or
+-        showmsg('fail', $!, "Could not open .../etc/hosts.$$ for write:");
+-    while (my $l = <HOSTSO>) {
+-        if ($l =~ /127\.0\.0\.1/) {
+-            print HOSTSN "127.0.0.1\t$n\tlocalhost.localdomain\tlocalhost\n";
++    foreach my $nic (sort keys %hwaddr) {
++        open CFGE, ">/mnt/dc/etc/sysconfig/network-scripts/ifcfg-$nic"
++            or showmsg('fail', $!, "Could not open ifcfg-$nic for writing:");
++        print CFGE "DEVICE=$nic\nBOOTPROTO=static\n" or
++            showmsg('fail', $!, "Could not write to ifcfg-$nic:");
++        if ($type eq 'MANE') {
++            my $nn = $nic;
++
++            print CFGE "ONBOOT=yes\nGATEWAY=0.0.0.0\n" or
++                showmsg('fail', $!, "Could not write ONBOOT to ifcfg-$nic:");
++            $nn =~ s/^eth//;
++	    my $ii = $i;
++	    $ii =~ s/^0+//;
++            if ($nn == 0) {
++                $nn = "10.4.1.$ii";
++                print CFGE "NETMASK=255.255.0.0\n" or showmsg('fail', $!,
++                    "Could not write NETMASK to ifcfg-$nic:");
++            } else {
++                $nn = "10.4.20$nn.$ii";
++                print CFGE "NETMASK=255.255.255.0\n" or showmsg('fail', $!, 
++                    "Could not write NETMASK to ifcfg-$nic:");
++            }
++            print CFGE "IPADDR=$nn\n" or showmsg('fail', $!, 
++                "Could not write IPADDR to ifcfg-$nic:");
+         } else {
+-            print HOSTSN $l;
++            if ($nic eq 'eth0') {
++                print CFGE "ONBOOT=yes\nIPADDR=10.4.2." or
++                    showmsg('fail', $!, "Couldn't write ONBOOT to ifcfg-$nic:");
++                print CFGE
++                    sprintf("%d\nNETMASK=255.255.0.0\nGATEWAY=0.0.0.0\n", $i)
++                    or showmsg('fail', $!, "Could not write IP to ifcfg-$nic:");
++            }
+         }
+-    }
+-    close HOSTSO or showmsg('fail', $!, 'Could not close hosts:');
+-    close HOSTSN or showmsg('fail', $!, "Could not close hosts.$$:");
+-    rename "/mnt/dc/etc/hosts.$$", '/mnt/dc/etc/hosts' or
+-        showmsg('fail', $!, "Could not rename hosts.$$ to hosts:");
++        print CFGE "HWADDR=$hwaddr{$nic}\n" or
++            showmsg('fail', $!, "Could not write MAC to ifcfg-$nic:");
++        close CFGE or showmsg('fail', $!, "Could not close ifcfg-$nic:");
++    }
++
++    ## open HOSTSO, '</mnt/dc/etc/hosts' or
++    ##     showmsg('fail', $!, 'Could not open .../etc/hosts for read:');
++    ## open HOSTSN, ">/mnt/dc/etc/hosts.$$" or
++    ##     showmsg('fail', $!, "Could not open .../etc/hosts.$$ for write:");
++    ## while (my $l = <HOSTSO>) {
++    ##     if ($l =~ /127\.0\.0\.1/) {
++    ##         print HOSTSN "127.0.0.1\t$type-$i\t$type-$i.lab\tlocalhost.localdomain\t";
++    ##         print HOSTSN "localhost\n";
++    ##     } else {
++    ##         print HOSTSN $l;
++    ##     }
++    ## }
++    ## close HOSTSO or showmsg('fail', $!, 'Could not close hosts:');
++    ## close HOSTSN or showmsg('fail', $!, "Could not close hosts.$$:");
++    ## rename "/mnt/dc/etc/hosts.$$", '/mnt/dc/etc/hosts' or
++    ##     showmsg('fail', $!, "Could not rename hosts.$$ to hosts:");
+ }
+ 
+ sub fixgrub($) {
+     my $i = shift;
++
+     $rv = shellwrap("/bin/mount /dev/$DEV$i /boot");
++    # if ($rv) {
++    #     $DEV =~ s/^s/h/;
++    #     $rv = shellwrap("/bin/mount /dev/$DEV$i /boot");
++    # }
+     exit $rv if $rv;
+-    $rv = shellwrap("/sbin/grub-install hd0");
+-    exit $rv if $rv;
++    ## if ($DISTVER == 3) {
++    ##     $rv = shellwrap("/sbin/grub-install hd0");
++    ##     exit $rv if $rv;
++    ## } else {
++        print "About to issue grub commands...\n";
++        open GRUB, "|/sbin/grub --batch" or
++            showmsg('fail', $!, 'Could not run grub:');
++        $i--;
++        print GRUB "root (hd0,$i)\n" or
++            showmsg('fail', $!, "Could not issue command root (hd0,$i):");
++        print GRUB "setup (hd0)\n" or
++            showmsg('fail', $!, 'Could not issue command setup (hd0):');
++        print GRUB "quit\n" or
++            showmsg('fail', $!, 'Could not quit grub:');
++        close GRUB or showmsg('fail', $!, 'Could not end grub commands:');
++    ## }
+     $rv = shellwrap("umount /boot");
+     exit $rv if $rv;
+ }
+@@ -210,21 +292,29 @@
+ 
+ sub runfdisk(@) {
+     my @cmds = @_;
+-    my $cmd = 0;
++    # my $bad;
+ 
+     print "About to issue fdisk commands...\n";
+     print join(' ', @cmds, "\n");
+ 
+-    open FDISK, "|/sbin/fdisk /dev/$DEV" or
+-        showmsg('fail', $!, 'Could not run fdisk:');
++    # foreach $DEV (qw(sda hda)) {
++        # $bad = 0;
++    open FDISK, "|/sbin/fdisk /dev/$DEV" or showmsg('fail', $!,
++        'Could not open fdisk commands:');
+     foreach (@cmds) {
+-        print FDISK "$_\n" or
+-            showmsg('fail', $!, "Could not issue command $cmd ($_):");
+-        $cmd++;
+-    }
+-    print FDISK "w\n" or
+-         showmsg('fail', $!, 'Could not tell fdisk to write:');
+-    close FDISK or showmsg('fail', $!, 'Could not end fdisk commands:');
++        if (print FDISK "$_\n") {
++            # showmsg('success', $_, 'fdisk command:');
++        } else {
++            showmsg('fail', $!, "Could not run command $_:");
++        }
++    }
++    print FDISK "w\n" or showmsg('fail', $!, 'Could not send write to fdisk:');
++    close FDISK or showmsg('fail', $!, 'Could not close fdisk commands:');
++    # if (not $bad) {
++    showmsg('success', 'done');
++            # return;
++        # }
++    # }
+ }
+ 
+ 
+@@ -232,19 +322,28 @@
+ 
+ print "*** I have just booted. ***\n";
+ 
+-open FOO, '/sbin/ifconfig eth0|' or
+-    showmsg('fail', $!, 'Could not run /sbin/ifconfig:');
+-$hwaddr = <FOO>;
+-while (<FOO>) { } # consume the rest of the output
+-close FOO;
+-my @tmp = split(' ', $hwaddr);
+-$hwaddr = pop @tmp;
+-$hwaddr = lc $hwaddr;
+-#$hwaddr =~ s/://g;
++my @nics = ();
++open NETDEV, "</proc/net/dev" or
++    showmsg('fail', $!, 'Could not open /proc/net/dev for reading:');
++foreach my $line (<NETDEV>) {
++    next unless $line =~ /(eth[0-9]):/;
++    push @nics, $1;
++}
++foreach my $nic (@nics) {
++    open FOO, "/sbin/ifconfig $nic|" or
++        showmsg('fail', $!, 'Could not run /sbin/ifconfig:');
++    my $elem = <FOO>;
++    while (<FOO>) { } # consume the rest of the output
++    close FOO;
++    my @tmp = split(' ', $elem);
++    $elem = pop @tmp;
++    #$elem =~ s/://g;
++    $hwaddr{$nic} = lc $elem;
++}
+ 
+ my $hostname = hostname();
+ 
+-print "My hardware address is $hwaddr and my hostname is $hostname.\n";
++print "My hardware address is $hwaddr{'eth0'} and my hostname is $hostname.\n";
+ readparts;
+ 
+ my $cmds;
+@@ -276,7 +375,10 @@
+ 
+ showmsg('success', $start, 'Starting at state');
+ 
+-showmsg('fail', 'Bailing out.') if ($start eq 'Z');
++# Undocumented state, suitable for emergencies.
++if ($start eq 'Z') {
++    showmsg('fail', 'Bailing out.');
++}
+ 
+ open DMESG, "</var/log/dmesg" or
+     showmsg('fail', $!, 'Could not open /var/log/dmesg:');
+@@ -287,7 +389,8 @@
+     }
+ }
+ close DMESG;
+-showmsg('fail', 'Stop.', 'Could not find netboot server. ') unless defined $nbh;
++showmsg('fail', 'Stop.', 'Could not find netboot server. ') unless
++    defined $nbh;
+ 
+ print "Mounting server with disk.conf ...\n" if 0;
+ $rv = shellwrap("/bin/mount $scenario/$hostname /mnt/di");
+@@ -333,7 +436,7 @@
+     runfdisk(qw(o)) if $step ne 'R' and $step ne 'C';
+ 
+     if ($step eq 'X') {
+-        checkpoint($hostname); # Take it out of netbooting
++        checkpoint($hostname); # take it out of netbooting
+         exec "/sbin/shutdown -h now" or
+             showmsg('fail', $!, 'Could not shut down:');
+     }
+@@ -348,21 +451,25 @@
+             my $s = $newpars{$i}{'start'};
+             my $e = $newpars{$i}{'end'};
+ 
+-            # XXX assume that partitions are contiguous
++            # Assume that partitions are contiguous
+             # Assume there are always 4 primary partitions
+             push @fcm, 'n'; # new
+-            if ($i < 5) {
+-                if ($ft eq 'extended') { push @fcm, 'e'; }
+-                else { push @fcm, 'p'; }
+-                push @fcm, $i unless $i == 4; # fdisk chooses 4 automatically
+-            }
++                if ($i < 5) {
++                    if ($ft eq 'extended') { push @fcm, 'e'; }
++                    else { push @fcm, 'p'; }
++                    push @fcm, $i if $i != 4; # fdisk chooses 4 automatically
++                }
+             push @fcm, ''; # select default start cylinder
+             if (defined $e and $e ne '') {
+                 push @fcm, sprintf("+%dM", $e - $s); # size in megs
+             } else {
+                 push @fcm, '';
+             }
+-            push @fcm, 't', $i, 82 if $ft eq 'swap';
++            if ($ft eq 'swap') {
++                push @fcm, 't';
++                push @fcm, $i if $i > 1;
++                push @fcm, 82;
++            }
+         }
+         push @fcm, 'p';
+ 
+@@ -372,18 +479,22 @@
+         for (my $wait = 0; $wait < 50; $wait++) {
+             my @npl = ();
+             foreach (@parlist) {
+-                if (open NONSENSE, "</dev/$DEV$_") {
++                if (open NONSENSE, "</dev/sda$_") {
+                     close NONSENSE;
+                     next;
++                # } elsif (open NONSENSE, "</dev/hda$_") {
++                #     close NONSENSE;
++                #     next;
+                 } else {
+                     push @npl, $_;
+                 }
+             }
+             last unless scalar @npl > 0;
+             sleep 1;
+-            print "Still waiting for partitions: " . join('/', @npl) .
+-                " [$wait]\n";
++            print "Still waiting for partitions: " .
++                join('/', @npl) . " [$wait]\n";
+         }
++
+         checkpoint($hostname, '0R');
+     }
+ 
+@@ -394,9 +505,17 @@
+             if ($ft eq 'ext2' or $ft eq 'ext3') {
+                 my $mp = $newpars{$i}{'mountpoint'};
+                 $rv = shellwrap("/sbin/mkfs.$ft -L $mp /dev/$DEV$i");
++                # if ($rv) {
++                #     $DEV =~ s/^s/h/;
++                #     $rv = shellwrap("/sbin/mkfs.$ft -L $mp /dev/$DEV$i");
++                # }
+                 exit $rv if $rv;
+             } elsif ($ft eq 'swap') {
+                 $rv = shellwrap("/sbin/mkswap /dev/$DEV$i");
++                if ($rv) {
++                    $DEV =~ s/^s/h/;
++                    $rv = shellwrap("/sbin/mkswap /dev/$DEV$i");
++                }
+                 exit $rv if $rv;
+             } else {
+                 print "Not placing a new fs on partition $i of type $ft.\n";
+@@ -410,6 +529,7 @@
+     foreach (sort keys %newpars) {
+         my $src = $newpars{$_}{'source'};
+         next unless defined $src and $src ne '';
++
+         $sl .= $_;
+         push @parl, $_;
+     }
+@@ -417,11 +537,15 @@
+ 
+     foreach my $i (sort keys %newpars) {
+         my $src = $newpars{$i}{'source'};
+-        next unless defined $src and $src ne '';
++
+         # now we have to lay new data down, since we torched the last set
+         next unless defined $src and $src ne '';
+         showmsg('success', "$src -> $DEV$i", 'Copying data:');
+         $rv = shellwrap("/bin/mount /dev/$DEV$i /mnt/dc");
++        # if ($rv) {
++        #     $DEV =~ s/^s/h/;
++        #     $rv = shellwrap("/bin/mount /dev/$DEV$i /mnt/dc");
++        # }
+         exit $rv if $rv;
+         $src =~ s/\//:/; # convert to rsync path
+         $rv = shellwrap("$RSYNC $src/ /mnt/dc");
+@@ -494,11 +618,11 @@
+             my $mp = $newpars{$step}{'mountpoint'};
+             $rv = shellwrap("/sbin/mkfs.$t -L $mp /dev/$DEV$step");
+             exit $rv if $rv;
+-            $pars{$step} = 'copy'; # can't sync other partition types
++            $pars{$step} = 'copy'; # can't copy other partition types
+         } elsif ($t eq 'swap') {
+             $rv = shellwrap("/sbin/mkswap /dev/$DEV$step");
+             exit $rv if $rv;
+-            delete $pars{$step}; # It's done.
++            delete $pars{$step};
+         } else {
+             showmsg('warn', $t, "Refusing to newfs partition $step of type:");
+         }
+@@ -529,8 +653,6 @@
+             $act = 'Synchronizing';
+         } elsif ($pars{$step} eq 'overwrite') {
+             # nothing else needed
+-            # (This is of especial interest if one is copying a series of
+-            # directories on top of each other.)
+             $act = 'Overwriting changed';
+         } else {
+             showmsg('fail', $step, 'Cannot act on partition');
+@@ -540,6 +662,10 @@
+ 
+         showmsg('success', "$src -> $DEV$step", "$act data:");
+         $rv = shellwrap("/bin/mount /dev/$DEV$step /mnt/dc");
++        # if ($rv) {
++        #     $DEV =~ s/^s/h/;
++        #     $rv = shellwrap("/bin/mount /dev/$DEV$step /mnt/dc");
++        # }
+         exit $rv if $rv;
+         $rv = shellwrap($cmd);
+         exit $rv if $rv;
+@@ -566,9 +692,13 @@
+     next unless defined $newpars{$i}{'mountpoint'};
+     if ($newpars{$i}{'mountpoint'} eq '/') { # assume /etc is on /
+         $rv = shellwrap("/bin/mount /dev/$DEV$i /mnt/dc");
++        # if ($rv) {
++        #     $DEV =~ s/^s/h/;
++        #     $rv = shellwrap("/bin/mount /dev/$DEV$i /mnt/dc");
++        # }
+         exit $rv if $rv;
+         fixfstab($i);
+-        fixsyscfg($hwaddr, $hostname);
++        fixsyscfg($hostname);
+         $rv = shellwrap("/bin/umount /mnt/dc");
+         exit $rv if $rv;
+     } elsif ($newpars{$i}{'mountpoint'} eq '/boot') {
+@@ -590,6 +720,11 @@
+ foreach (@tree) {
+     $rv = shellwrap("/bin/mount /dev/$DEV$_ /mnt/dc" .
+         $newpars{$_}{'mountpoint'});
++    if ($rv) {
++        $DEV =~ s/^s/h/;
++        $rv = shellwrap("/bin/mount /dev/$DEV$_ /mnt/dc" .
++            $newpars{$_}{'mountpoint'});
++    }
+     exit $rv if $rv;
+ }
+ 
+Index: README
+===================================================================
+RCS file: /mnt/remote/cvsroot/tcsboot/README,v
+retrieving revision 1.1.1.1
+diff -u -r1.1.1.1 README
+--- README	26 Oct 2007 04:38:25 -0000	1.1.1.1
++++ README	2 Nov 2007 08:19:39 -0000
+@@ -6,7 +6,7 @@
+ 
+ Look at tcsboot.h and make sure that the values there are correct for your
+ installation of TCS.  tcsboot is currently only tested under Linux
+-(specifically, Fedora Core 3).
++(specifically, Fedora Core 3 and Fedora 7).
+ 
+ You do not need to configure DHCPD to run at system startup.  tcsboot will
+ start DHCPD automatically.  However, the initialization script provided by

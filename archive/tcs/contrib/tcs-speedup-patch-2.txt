@@ -1,0 +1,702 @@
+It turns out that various TCS functions call Testbed.getTask() in inner loops
+to look up a task by id.  In TCS 0.3.8, this function iterates over all tasks
+in the scenario (nearly 10,000 in our 72-node configuration).  This patch does the following:
+
+   1. Replaces linear search in getTask() functions with hash-table lookup.
+
+   2. Replaces a call to Nomad.sleep(0,0,10,null) in TaskQueueWorker with
+      Thread.sleep(10), because Nomad.sleep sleeps for a minimum of 100ms.
+
+   3. Inserts a 100ms sleep after each loop over the task queue while
+      waiting for tasks to complete, so we don't busy-wait.
+
+   4. Rejects attempts to create tasks with duplicate IDs with a pop-up
+      error message.
+
+This patch dramatically improves TCS performance.  For example, a .Level 2
+Validate. takes approximately 32-35 seconds on our testbed with TCS 0.3.8, and
+4-5 seconds with the patch.  A similar task on 400 nodes would likely take
+fifteen minutes without the patch, due to the O(n^2) behavior, and perhaps as
+little as 30s with the patch.
+
+- Darrell Kindred (at sparta.com), 30 Oct 2007
+
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/Application.java
+--- a/src/java/mil/navy/nrl/itd/tcs/Application.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/Application.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -7,7 +7,7 @@ public class Application extends Testbed
+ {
+    private static final long serialVersionUID = 7526472295622776152L;
+    
+-   private ArrayList<Task> _tasks;
++   private HashMap<String,Task> _tasks;
+    
+    private boolean _isMonitored;
+    
+@@ -15,14 +15,14 @@ public class Application extends Testbed
+    {
+       super();
+       
+-      _tasks = new ArrayList<Task>();
++      _tasks = new HashMap<String,Task>();
+       
+       _isMonitored = true;
+    }
+ 
+    public boolean hasChildren ()
+    {
+-      if (getTasks().size() > 0)
++      if (_tasks.size() > 0)
+          return true;
+       else
+          return false;
+@@ -62,24 +62,28 @@ public class Application extends Testbed
+    
+    public Task getTask (String id)
+    {
+-      for (Task task : _tasks)
+-      {
+-         if (id.equals(task.id()))
+-            return task;
+-      }
+-      return null;
++      return _tasks.get(id);
+    }
+    
+    public ArrayList<Task> getTasks ()
+    {
+-      return _tasks;
++      // Old implementation returned tasks in sorted order, but no one 
++      // seems to depend on that.  We do it anyway for now.
++      ArrayList<Task> tasks = new ArrayList<Task>(_tasks.values());
++      Collections.<Task>sort(tasks);
++      return tasks;
+    }
+       
+    public void addTask (Task task)
++      throws ConfigException
+    {
++      if (getTask(task.id()) != null)
++      {
++	  throw new ConfigException("Duplicate task id: \"" + task.id() + "\"");
++      }
+       task.setParent(this);
+-      _tasks.add(task);
+-      Collections.<Task>sort(_tasks);
++      _tasks.put(task.id(),task);
++      ((TestbedNode)getParent()).addTask(task);
+    }
+    
+    public boolean isMonitored () {
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/BatchTestRunFileParser.java
+--- a/src/java/mil/navy/nrl/itd/tcs/BatchTestRunFileParser.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/BatchTestRunFileParser.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -26,6 +26,7 @@ public class BatchTestRunFileParser exte
+    private TestRun _currentTestRun;
+       
+    public BatchTestRunFileParser(String filename)
++      throws ConfigException
+    {  
+       setFileName(filename);
+       setDelimiter("!");
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/ConfigException.java
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/java/mil/navy/nrl/itd/tcs/ConfigException.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -0,0 +1,9 @@
++package mil.navy.nrl.itd.tcs;
++
++public class ConfigException extends Exception
++{
++   public ConfigException (String msg)
++   {
++      super(msg);
++   }
++}
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/ConfigFileParser.java
+--- a/src/java/mil/navy/nrl/itd/tcs/ConfigFileParser.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/ConfigFileParser.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -21,6 +21,7 @@ public class ConfigFileParser extends Me
+    }
+    
+    public ConfigFileParser (Nomad nomadInstance, String newFilePath)
++      throws ConfigException
+    {
+       nomad = nomadInstance; 
+       setDelimiter("=");
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/ControlLevelPanel.java
+--- a/src/java/mil/navy/nrl/itd/tcs/ControlLevelPanel.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/ControlLevelPanel.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -461,6 +461,11 @@ public class ControlLevelPanel
+             Integer.valueOf(majorControlLevel) + 1).toString());
+       }
+    }
++
++   public void showConfigError (Component parent, ConfigException e)
++   {
++       JOptionPane.showMessageDialog(parent, "Configuration Error: " + e.getMessage());
++   }
+    
+    public void rebootAndConnect ()
+    {
+@@ -561,32 +566,37 @@ public class ControlLevelPanel
+       {
+          int returnVal = fileChooser.showOpenDialog(this);
+          if (returnVal == JFileChooser.APPROVE_OPTION) {
+-            new Thread(new Runnable() {
+-               public void run () {
+-                  File file = fileChooser.getSelectedFile();
+-                  BatchTestRunFileParser batchTestRunFileParser = 
+-                     new BatchTestRunFileParser(file.toString());
+-                  Long start = System.currentTimeMillis();
+-                  outputTextLine(testbedObject.id(), 
+-                     "** Running batch script: " + file.toString() +
+-                     " with " + batchTestRunFileParser.getTestRuns().size() +
+-                     " test runs @ " + 
+-                     nomad.formatTime(nomad.LOCAL_TIME, start));
+-                  for (TestRun testRun : batchTestRunFileParser.getTestRuns())
+-                     executeTestRun(testRun);
+-                  Long finish = System.currentTimeMillis();
+-                  outputTextLine(testbedObject.id(), 
+-                     "** Finished batch script: " + file.toString() + 
+-                     " with " + batchTestRunFileParser.getTestRuns().size() + 
+-                     " test runs @ " + 
+-                     nomad.formatTime(nomad.LOCAL_TIME, finish));
+-                  outputTextLine(testbedObject.id(), "** Batch script: " + 
+-                     file.toString() + " (" + 
+-                     batchTestRunFileParser.getTestRuns().size() + 
+-                     " test runs lasted " + 
+-                     nomad.formatTime(nomad.LOCAL_TIME, finish-start) + ")");
+-               }
+-            }).start();
++	    final File file = fileChooser.getSelectedFile();
++	    try {
++	       final BatchTestRunFileParser batchTestRunFileParser = 
++		   new BatchTestRunFileParser(file.toString());
++	    
++               new Thread(new Runnable() {
++                  public void run () {
++                     Long start = System.currentTimeMillis();
++                     outputTextLine(testbedObject.id(), 
++                        "** Running batch script: " + file.toString() +
++                        " with " + batchTestRunFileParser.getTestRuns().size() +
++                        " test runs @ " + 
++                        nomad.formatTime(nomad.LOCAL_TIME, start));
++                     for (TestRun testRun : batchTestRunFileParser.getTestRuns())
++                        executeTestRun(testRun);
++                     Long finish = System.currentTimeMillis();
++                     outputTextLine(testbedObject.id(), 
++                        "** Finished batch script: " + file.toString() + 
++                        " with " + batchTestRunFileParser.getTestRuns().size() + 
++                        " test runs @ " + 
++                        nomad.formatTime(nomad.LOCAL_TIME, finish));
++                     outputTextLine(testbedObject.id(), "** Batch script: " + 
++                        file.toString() + " (" + 
++                        batchTestRunFileParser.getTestRuns().size() + 
++                        " test runs lasted " + 
++                        nomad.formatTime(nomad.LOCAL_TIME, finish-start) + ")");
++                  }
++               }).start();
++	    } catch (ConfigException e) {
++		showConfigError(this,e);
++	    }
+          }
+       }
+       else 
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/Dashboard.java
+--- a/src/java/mil/navy/nrl/itd/tcs/Dashboard.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/Dashboard.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -344,25 +344,34 @@ public class Dashboard
+       }
+    }
+ 
++   public void showConfigError (Component parent, ConfigException e)
++   {
++       JOptionPane.showMessageDialog(parent, "Configuration Error: " + e.getMessage());
++   }
++
+    public void loadScenarioFile (File scenarioFile)
+    {
+       logger.entering("Dashboard", "loadScenarioFile", scenarioFile);
+-      //tabbedPane.removeAll();
+-      treePanel.clear();
+-
+-      nomad.getMantis().setScenarioPath(scenarioFile.getParent());
+-      new ScenarioFileParser(scenarioFile.toString());
+-
+-      scenarioLabel.setText("Scenario: " + 
+-         nomad.getMantis().getScenarioName());
+-
+-      scenarioLabel.repaint();
+-
+-      nomad.loadScenario();
+-
+-      // NOTE: moved here from connectToNodes
+-      populateNodes();
+-
++      try {
++         //tabbedPane.removeAll();
++         treePanel.clear();
++
++         nomad.getMantis().setScenarioPath(scenarioFile.getParent());
++         new ScenarioFileParser(scenarioFile.toString());
++
++         scenarioLabel.setText("Scenario: " + 
++            nomad.getMantis().getScenarioName());
++
++         scenarioLabel.repaint();
++
++         nomad.loadScenario();
++
++         // NOTE: moved here from connectToNodes
++         populateNodes();
++      } catch (ConfigException e) {
++	  // XXX do we need to do anything to back out changes made prior to the exception?
++	  showConfigError(this, e);
++      }
+       logger.exiting("Dashboard", "loadScenarioFile", scenarioFile);
+    }
+ 
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/HardwareFileParser.java
+--- a/src/java/mil/navy/nrl/itd/tcs/HardwareFileParser.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/HardwareFileParser.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -29,6 +29,7 @@ public class HardwareFileParser extends 
+    private TasksFileParser tasksFileParser;
+    
+    public HardwareFileParser(Nomad newNomad)
++      throws ConfigException
+    {
+       nomad = newNomad;
+       setDelimiter(",");
+@@ -70,6 +71,7 @@ public class HardwareFileParser extends 
+    }
+    
+    public void afterIterateTokens (StringTokenizer tokenizer)
++      throws ConfigException
+    {
+       if (!nomad.getLocalHost().equals(nomad.getMantis().getConsoleHostname()))
+       {
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/MetadataFileParser.java
+--- a/src/java/mil/navy/nrl/itd/tcs/MetadataFileParser.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/MetadataFileParser.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -70,6 +70,7 @@ public abstract class MetadataFileParser
+    }
+    
+    public void parse ()
++      throws ConfigException
+    {
+       logger.entering("MetadataFileParser", "parse", filePath + fileName);
+       try {
+@@ -94,12 +95,14 @@ public abstract class MetadataFileParser
+       catch (FileNotFoundException fnfe)
+       {
+          logger.severe("Could not find file: " + filePath + fileName);
++	 throw new ConfigException("Could not find file: " + filePath + fileName);
+          //logger.info("Trying again.");
+          //parse();
+       }
+       catch (IOException ioe)
+       {
+          logger.severe("IO Error reading file" + filePath + fileName);
++	 throw new ConfigException("IO Error reading file: " + filePath + fileName);
+       } 
+       logger.exiting("MetadataFileParser", "parse", filePath + fileName);
+    }
+@@ -136,7 +139,8 @@ public abstract class MetadataFileParser
+    
+    public abstract void handleToken (String token, int tokenCount);
+    
+-   public abstract void afterIterateTokens (StringTokenizer tokenizer);
++   public abstract void afterIterateTokens (StringTokenizer tokenizer)
++      throws ConfigException;
+    
+    public void iterateTokens (StringTokenizer tokenizer)
+    {
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/Nomad.java
+--- a/src/java/mil/navy/nrl/itd/tcs/Nomad.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/Nomad.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -85,6 +85,7 @@ public class Nomad extends NotificationB
+    // ONLY TO REINSTANTIATE OR INSTANTIATE
+    // IF UNSURE DO NOT CALL THIS METHOD, CALL THE ONE ABOVE!!!
+    private static Nomad getInstance (String tcsConfigFilePath)
++      throws ConfigException
+    {
+       nomadInstance = new Nomad(tcsConfigFilePath);
+       logger.exiting("Nomad", "getInstance", nomadInstance);
+@@ -92,6 +93,7 @@ public class Nomad extends NotificationB
+    }
+  
+    protected Nomad (String tcsConfigFilePath)
++      throws ConfigException
+    {  
+       logger.entering("Nomad", "Nomad");
+ 
+@@ -253,6 +255,7 @@ public class Nomad extends NotificationB
+    // Testbed methods
+ 
+    public void loadScenario() 
++      throws ConfigException
+    {
+       logger.entering("Nomad", "loadScenario", mantis.getScenarioName());
+       hardwareFileParser = new HardwareFileParser(this);
+@@ -1200,55 +1203,60 @@ public class Nomad extends NotificationB
+    // MAIN method
+    public static void main(String[] args) 
+    {
+-      if (!System.getProperty("user.name").equals("root"))
+-      {
+-         System.err.println("TCS must be run as root.");
++      try {
++         if (!System.getProperty("user.name").equals("root"))
++         {
++            System.err.println("TCS must be run as root.");
++            System.exit(1);
++         }
++         if (args.length > 0 && args.length <= 3)
++         {
++            final Nomad nomad = Nomad.getInstance(args[0]);
++   
++            if (args.length >= 2 && args[1].equals("GUI"))
++            {
++               File file = null;
++               if (args.length == 3)
++               {
++                  file = new File(args[2]);
++                  if (file.exists())
++                  {
++                     System.err.println("TCS cannot find the file: " +
++                        file.toString());
++                  }
++               }
++               final File checkedFile = file;
++   
++               //Schedule a job for the event-dispatching thread:
++               //creating and showing this application's GUI.
++               javax.swing.SwingUtilities.invokeLater(new Runnable() {
++                  public void run() {
++                     Dashboard.createAndShowGUI();
++                     if (checkedFile.getName().equals("scenario.mantis"))
++                        nomad.getDashboard().loadScenarioFile(checkedFile);
++                     //else
++                        //nomad.getDashboard().loadBatchFile(checkedFile);
++                  }
++               });
++   
++               nomad.setNomadServer(new NomadServer());
++               nomad.getNomadServer().start();
++            }
++            else
++            {
++               nomad.setNomadListener(DefaultNomadListener.getInstance());
++               nomad.setNomadServer(new NomadServer());
++               nomad.getNomadServer().start();
++            }
++         }
++         else
++         {
++            System.err.println("Usage: java -jar TCS.jar <config file> <GUI> <scenario file>");
++            System.exit(1);
++         }
++      } catch (ConfigException e) {
++         System.err.println("Configuration error: " + e.getMessage());
+          System.exit(1);
+       }
+-      if (args.length > 0 && args.length <= 3)
+-      {
+-         final Nomad nomad = Nomad.getInstance(args[0]);
+-         
+-         if (args.length >= 2 && args[1].equals("GUI"))
+-         {
+-            File file = null;
+-            if (args.length == 3)
+-            {
+-               file = new File(args[2]);
+-               if (file.exists())
+-               {
+-                  System.err.println("TCS cannot find the file: " +
+-                     file.toString());
+-               }
+-            }
+-            final File checkedFile = file;
+-
+-            //Schedule a job for the event-dispatching thread:
+-            //creating and showing this application's GUI.
+-            javax.swing.SwingUtilities.invokeLater(new Runnable() {
+-               public void run() {
+-                  Dashboard.createAndShowGUI();
+-                  if (checkedFile.getName().equals("scenario.mantis"))
+-                     nomad.getDashboard().loadScenarioFile(checkedFile);
+-                  //else
+-                     //nomad.getDashboard().loadBatchFile(checkedFile);
+-               }
+-            });
+-
+-            nomad.setNomadServer(new NomadServer());
+-            nomad.getNomadServer().start();
+-         }
+-         else
+-         {
+-            nomad.setNomadListener(DefaultNomadListener.getInstance());
+-            nomad.setNomadServer(new NomadServer());
+-            nomad.getNomadServer().start();
+-         }
+-      }
+-      else
+-      {
+-         System.err.println("Usage: java -jar TCS.jar <config file> <GUI> <scenario file>");
+-         System.exit(1);
+-      }
+    }
+ }
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/ScenarioFileParser.java
+--- a/src/java/mil/navy/nrl/itd/tcs/ScenarioFileParser.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/ScenarioFileParser.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -21,6 +21,7 @@ public class ScenarioFileParser extends 
+    }
+    
+    public ScenarioFileParser (String newFilePath)
++      throws ConfigException
+    {
+       setDelimiter("=");
+       setFilePath(newFilePath);
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/TaskQueueWorker.java
+--- a/src/java/mil/navy/nrl/itd/tcs/TaskQueueWorker.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/TaskQueueWorker.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -203,7 +203,10 @@ public class TaskQueueWorker {
+                         nomad.executeTarget(testbedNode.getControlHostname(), 
+                            controlLevel);
+                      }
+-                     nomad.sleep(0, 0, 10, null);
++		     // Nomad::sleep() sleeps in 100-1000ms intervals.
++		     // Use Thread.sleep directly.  -dkindred 2007-10-23
++                     // nomad.sleep(0, 0, 10, null);
++		     try { Thread.sleep(10); } catch (Exception e) {}
+                   }
+                }
+                while (!groupDone)
+@@ -338,6 +341,8 @@ public class TaskQueueWorker {
+                         " out of " + numGroupTasks + ", " +
+                         numIncompleteGroupTasks + " tasks left in group " + groupCount + ")");
+                   }
++		  // Sleep 100ms rather than busy-wait for tasks to complete
++		  nomad.sleep(0,0,100,null);
+                }
+                if (numCompletedTasks >= numTasks)
+                    done = true;
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/TaskUtilities.java
+--- a/src/java/mil/navy/nrl/itd/tcs/TaskUtilities.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/TaskUtilities.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -11,6 +11,7 @@ public class TaskUtilities
+    private static Logger logger = Logger.getLogger("mil.navy.nrl.itd.tcs");
+    
+    public static void createAntTasksFiles(TestbedNode testbedNode)
++       throws ConfigException
+    {
+       //Task deployTasksFileTask = createDeployTasksFileTask("0.0.0.2",
+       //      testbedNode.getControlHostname());
+@@ -407,7 +408,7 @@ public class TaskUtilities
+    {
+       Task newTask = new Task();
+       newTask.setLevel(level);
+-      newTask.setName("rsync time files");
++      newTask.setName("rsync time files - level " + level);
+       newTask.setType(Task.Type.RETRY_UNTIL_SUCCESS);
+       newTask.setStatus(Task.Status.IDLE);
+       newTask.setSourceHostname(destHostname);
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/TasksFileParser.java
+--- a/src/java/mil/navy/nrl/itd/tcs/TasksFileParser.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/TasksFileParser.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -37,6 +37,7 @@ public class TasksFileParser extends Met
+    private Task _currentTask;
+       
+    public TasksFileParser(TestbedNode testbedNode)
++      throws ConfigException
+    {     
+       setDelimiter("!");
+       _testbedNode = testbedNode;
+@@ -71,6 +72,7 @@ public class TasksFileParser extends Met
+    }
+    
+    public void parseTasksFile (String appName)
++      throws ConfigException
+    {
+       setFilePath(tasksPath);
+       setFileName(appName + ".tasks");
+@@ -154,10 +156,11 @@ public class TasksFileParser extends Met
+    }
+    
+    public void afterIterateTokens (StringTokenizer tokenizer)
++      throws ConfigException
+    {
+       if (_currentTask.getSourceHostname().equals(""))
+          _currentTask.setSourceHostname(_testbedNode.getControlHostname());
+       if (_currentTask.getName() != null)
+-         _currentApplication.addTask(_currentTask);
++	  _currentApplication.addTask(_currentTask);
+    }
+ }
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/Testbed.java
+--- a/src/java/mil/navy/nrl/itd/tcs/Testbed.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/Testbed.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -7,6 +7,8 @@ public class Testbed extends TestbedObje
+ {
+    private static final long serialVersionUID = 7526472295622776154L;
+    
++   private HashMap<String,Task> _tasks;
++
+    private ArrayList<TestbedNode> _testbedNodes;
+  
+    private boolean _isConnected;
+@@ -15,6 +17,8 @@ public class Testbed extends TestbedObje
+    {
+       super();
+       
++      _tasks = new HashMap<String,Task>();
++
+       _testbedNodes = new ArrayList<TestbedNode>();
+       
+       _isConnected = false;
+@@ -86,46 +90,45 @@ public class Testbed extends TestbedObje
+       return applications;
+    }
+ 
++   // called from TestbedNode.addTask() and Testbed.addTestbedNode()
++   public void addTask (Task task)
++       throws ConfigException
++   {
++      if (getTask(task.id()) != null)
++      {
++	  throw new ConfigException("Duplicate task id: \"" + task.id() + "\"");
++      }
++      _tasks.put(task.id(), task);
++   }
++
+    public Task getTask (String id)
+    {
+-      for (TestbedNode testbedNode : _testbedNodes)
+-      {
+-         for (Application application : testbedNode.getApplications())
+-         {
+-            for (Task task : application.getTasks())
+-            {
+-               if (id.equals(task.id()))
+-               {
+-                  return task;
+-               }
+-            }
+-         }
+-      }
+-      return null;
++      return _tasks.get(id);
+    }
+    
+    public ArrayList<Task> getTasks () 
+    {
+-      ArrayList<Task> tasks = new ArrayList<Task>();
+-      for (TestbedNode testbedNode : _testbedNodes)
+-      {
+-         for (Application application : testbedNode.getApplications())
+-         {
+-            tasks.addAll(application.getTasks());
+-         }
+-      }
++      // Old implementation returned tasks in sorted order, but no
++      // one seems to depend on that.  Do it anyway for now.
++      ArrayList<Task> tasks = new ArrayList<Task>(_tasks.values());
+       Collections.<Task>sort(tasks);
+       return tasks;
+    }
+    
+    public void addTestbedNode (TestbedNode testbedNode)
++       throws ConfigException
+    {
+       testbedNode.setParent(this);
+       _testbedNodes.add(testbedNode);
++      for (Task task : testbedNode.getTasks())
++      {
++	 addTask(task);
++      }
+    }
+ 
+    public void clearTestbedNodes()
+    {
+       _testbedNodes.clear();
++      _tasks.clear();
+    }
+ }
+diff -r e2dcf49e0457 -r a73e3f6f25bb src/java/mil/navy/nrl/itd/tcs/TestbedNode.java
+--- a/src/java/mil/navy/nrl/itd/tcs/TestbedNode.java	Wed Oct 24 13:13:35 2007 -0400
++++ b/src/java/mil/navy/nrl/itd/tcs/TestbedNode.java	Tue Oct 30 10:40:22 2007 -0400
+@@ -7,6 +7,8 @@ public class TestbedNode extends Testbed
+ {
+    private static final long serialVersionUID = 7526472295622776153L;
+       
++   private HashMap<String,Task> _tasks;
++
+    private ArrayList<Application> _applications;
+  
+    private boolean _isConnected;
+@@ -21,6 +23,8 @@ public class TestbedNode extends Testbed
+    {
+       super();
+       
++      _tasks = new HashMap<String,Task>();
++
+       _applications = new ArrayList<Application>();
+       
+       _ctrlHostname = "";
+@@ -79,34 +83,41 @@ public class TestbedNode extends Testbed
+       return _applications;
+    }
+    
++   // called from Application.addTask() and TestbedNode.addApplication()
++   public void addTask (Task task)
++       throws ConfigException
++   {
++      if (getTask(task.id()) != null)
++      {
++	  throw new ConfigException("Duplicate task id: \"" + task.id() + "\"");
++      }
++      _tasks.put(task.id(), task);
++      ((Testbed)getParent()).addTask(task);
++   }
++
+    public Task getTask (String id)
+    {
+-      for (Application application : _applications)
+-      {
+-         for (Task task : application.getTasks())
+-         {
+-            if (id.equals(task.id()))
+-               return task;
+-         }
+-      }
+-      return null;
++      return _tasks.get(id);
+    }
+    
+    public ArrayList<Task> getTasks ()
+    {
+-      ArrayList<Task> tasks = new ArrayList<Task>();
+-      for (Application application : _applications)
+-      {
+-         tasks.addAll(application.getTasks());
+-      }
++      // Old implementation returned tasks in sorted order, but no
++      // one seems to depend on that.  Do it anyway for now.
++      ArrayList<Task> tasks = new ArrayList<Task>(_tasks.values());
+       Collections.<Task>sort(tasks);
+       return tasks;
+    }
+    
+    public void addApplication (Application application)
++      throws ConfigException
+    {
+       application.setParent(this);
+       _applications.add(application);
++      for (Task task : application.getTasks())
++      {
++	 addTask(task);
++      }
+    }
+    
+    public String getTestbedNodeID () {

@@ -1,0 +1,598 @@
+<PRE>
+TITLE: Howto Simulate Sensor Networks in NS-2
+
+AUTHOR: Ian Downard <nrlsensorsim@pf.itd.nrl.navy.mil>
+
+DATE: March 2003
+
+INTRODUCTION:
+
+  This document includes detailed instructions which describe how to use the
+  nrlsensorsim code to simulate sensor networks in the Network Simulator,
+  version 2.1b9a, distributed by the Information Sciences Institute at the USC
+  School of Engineering [1].
+
+
+HOWTO CONFIGURE SIMULATIONS:
+
+Setting up a sensor network in ns-2 follows the same format as mobile node
+simulations.  The best way to create your own simulation is to modify the
+one of the examples distributed with this code.  Another good example is
+included in Appendix A.
+
+Places where a sensor network simulation differs from a mobile node simulation
+are listed below.  Setting up ns_, god_, tracing, topography objects and
+starting and stopping the simulation are all the same as in traditional mobile 
+node simulations.
+
+  o Configure Phenomenon channel and Data channel:
+    
+    Create a phenomenon channel and a data channel.  Like mobile nodes, 
+    phenomenon nodes use 802.11 for the physical layer.  We must configure the
+    two different types of nodes on separate channels, in order to avoid
+    contention at the physical layer.  All phenomenon nodes should be configured
+    on the same channel, even if they're emanating different types of phenomena.
+    
+        set chan_1_ [new $val(chan)]
+        set chan_2_ [new $val(chan)]
+
+  o Choose a MAC layer to use for emanating phenomena over the existing ns2
+    infastructure for wireless communications.  Using 802.11 probably isn't
+    realistic, since phenomena should be emenating without regard to collisions
+    or congestion control (i.e. do we really need to simulate collisions of 
+    atomic molecules, such as carbon monixide?  Even if we did, I doubt 802.11
+    would model that very well...).  I recommend using the basic "Mac" class
+    for the PHENOM node's MAC layer, via:
+
+    set val(mac)            Mac/802_11      ;# MAC type for sensor nodes
+    set val(PHENOMmac)      Mac             ;# MAC type for phenomena
+
+  o Configure Phenomenon nodes with the PHENOM "routing" protocol:
+  
+    Use node-config, just like with mobile nodes, but specify PHENOM as the
+    routing protocol so the phenomenon is emanated according to the rules
+    defined in phenom/phenom.cc.  Also, be sure to configure in the channel and
+    MAC layer you've selected for phenomena broadcasts.  In this example, we
+    selected $chan_1_.
+
+        $ns_ node-config \
+             -adhocRouting PHENOM \
+        	 -channel $chan_1_ \
+        	 -llType $val(ll) \
+        	 -macType $val(PHENOMmac) \
+        	 -ifqType $val(ifq) \
+        	 -ifqLen $val(ifqlen) \
+        	 -antType $val(ant) \
+        	 -propType $val(prop) \
+        	 -phyType $val(netif) \
+        	 -topoInstance $topo \
+        	 -agentTrace ON \
+        	 -routerTrace ON \
+        	 -macTrace ON \
+        	 -movementTrace ON
+
+  o Configure the Phenomenon node's pulse rate and phenomenon type:
+
+    The two parameters which can be used to customize the Phenomenon are listed
+    below.  They are both optional.
+
+    - pulserate FLOAT
+      - FLOAT must be either a floating point number or an integer
+      - describes how frequently a Phenomenon node broadcasts its presence
+      - defaults to 1 broadcast per second
+      
+    - phenomenon PATTERN
+      - PATTERN must be any one of the following keywords:
+          CO, HEAVY_GEO, LIGHT_GEO, SOUND, TEST_PHENOMENON
+        corresponding to Carbon Monoxide, heavy seismic activity, light seismic 
+        activity, audible sound, and some other generic phenomenon.
+      - This option is mostly useful for simulations involving multiple
+        phenomenon nodes, so that it's easier to distinguish who a sensor node
+        is detecting by looking at the ns trace file.
+      - defaults to TEST_PHENOMENON
+    
+        [$node_(0) set ragent_] pulserate .1       ;#PHENOM emanates 10x / sec
+        [$node_(0) set ragent_] phenomenon CO      ;#PHENOM represents CO gas
+
+  o Configure Sensor nodes:
+
+    Sensor nodes must be configured with a -PHENOMchannel attribute and an
+    -channel attribute.  PHENOMchannel should be the same as the channel you
+    configured the phenomenon node with, and .  The other channel is the
+    channel you which will be used for mobile-node application layer data, such
+    as sensor reports.  Also, sensor nodes configurations must specify a MAC 
+    protocol for the interface to phenomena and a MAC protocol for the 
+    interface with other wireless nodes (I such as "Mac/802_11").  Do this with 
+    the -PHENOMmacType and -macType attributes.  PHENOMmacType should be the 
+    same as the macType used in PHENOM nodes, and macType should be the same
+    as the macType used in other nodes participating in the processing of
+    sensor data (probably 802.11, right).
+
+        $ns_ node-config \
+             -adhocRouting $val(rp) \
+        	 -channel $chan_2_ \
+    	     -macType $val(mac) \
+        	 -PHENOMmacType $val(PHENOMmac) \
+             -PHENOMchannel $chan_1_   
+     
+    If desired, a sensor node can be configured so that a specified amount of
+    energy will be deducted from a sensor node's energy reserve each time it
+    receives any amount of phenomena at some point in time.  To set this up,
+    the following parameters must be used in node-config:
+    
+             -energyModel $val(engmodel) \
+             -rxPower $val(rxPower) \
+             -txPower $val(txPower) \
+             -sensePower $val(sensePower) \
+             -idlePower $val(idlePower) \
+             -initialEnergy $val(initeng)
+
+    Each of those values must be previously initialized, such as:
+     
+        set val(engmodel)       EnergyModel
+        set val(txPower)        0.175               ;# transmitting power in mW
+        set val(rxPower)        0.175               ;# recving power in mW
+        set val(sensePower)     0.00000175;         ;# sensing power in mW
+        set val(idlePower)      0.0                 ;# idle power in mW
+        set val(initeng)        0.5                 ;# Initial energy in Joules
+     
+    The energy parameters used in node-config are described as follows:
+     
+       -rxPower .175 <-- indicates 175mW consumed for receiving a packet of 
+                         arbitrary size at time t
+       -txPower .175 <-- indicates 175mW consumed for transmitting a packet of
+                         arbitrary size at time t
+       -sensePower .00000175 <-- indicates 1.75 micro Watts consumed for 
+                                 detecting any amount of phenomena at time t
+       -initialEnergy 5 <-- indicates a total energy reserve of 5 Joules 
+                            (or 5 W/s) available to the sensor.
+
+    These energy parameters were based on data presented in the following
+    paper: "Energy-EfficientCommunication for Ad-Hoc Wireless Sensor
+    Networks", R. Min  and A. Chandrakasan; Nov 2001;
+    http://www.mit.edu/~rmin/research
+
+    *IMPORTANT GOTTCHA*:
+    Ns-2's energy consumption model utilizes color to illustrate when a node
+    is about to exhaust it's energy, so the node coloring which is part of the
+    sensor app should be disabled with the DISABLE_COLORS definition in
+    sensorapp.cc.  Remember to run make again to compile those changes into
+    the ns executable.
+     
+    In addition to DISABLE_COLORS, some other parameters can be specified in
+    sensorapp.cc in order to customize your sensor nodes.  These parameters are
+    listed below:
+    
+      - SILENT_PHENOMENON
+        Seconds of quiescence required for a sensor to go off it's alarming
+        state.  Example:
+        
+        #define SILENT_PHENOMENON 0.2
+
+      - DISABLE_COLORS
+        Set to true, if node color changes are unwanted.  Example:
+        
+        #define DISABLE_COLORS FALSE
+
+      - MESG_SIZE
+        This is the size (in bytes) of the messages to send to the gateway, or
+        data collection point, or whatever you want to call the sink node
+        attached to this sensor node (over udp, for example).  Example:
+
+        #define MESG_SIZE 1000
+
+      - TRANSMIT_FREQ
+
+        This is the frequency with which a sensor node triggered by PHENOM pkts
+        will send a message to the gateway, or data collection point, or sink,
+        or whatever you want to call the sink node attached to this sensor node
+        (over udp, for example).  Units are in seconds, so a message of size 
+        MESG_SIZE bytes will be transmitted to the gateway node once for every 
+        TRANSMIT_FREQ seconds in which the sensor node has received one or more
+        PHENOM packets.
+
+        #define TRANSMIT_FREQ 0.1
+
+
+  o Configure non-Sensor nodes (such as data collection points, or gateways for
+    the sensor network):
+    
+    Nodes which are not sensor nodes or phenomenon nodes, should not be 
+    configured with a PHENOMchannel, since their only interface is to the
+    mobile-node channel.  This is done with the -PHENOMchannel "off" attribute.
+
+        $ns_ node-config \
+             -adhocRouting $val(rp) \
+        	 -channel $chan_2_ \
+             -PHENOMchannel "off"
+
+  o Attach sensor agents:
+  
+    Create a sensor agent for each sensor node, and attach that agent to its
+    respective node.  Also, specify that all packets coming in from the
+    PHENOMchannel should be received by the sensor agent.  In the following
+    example, $i would represent the node number for the sensor node currently
+    being configured.
+    
+        set sensor_($i) [new Agent/SensorAgent]
+        $ns_ attach-agent $node_($i) $sensor_($i)
+
+        # specify the sensor agent as the up-target for the sensor node's link
+        # layer configured on the PHENOM interface, so that the sensor agent
+        # handles the  received PHENOM packets instead of any other agent
+        # attached to the node.
+        [$node_($i) set ll_(1)] up-target $sensor_($i)
+
+  o Attach UDP agent and sensor application to each node: (optional)
+
+    How the sensor nodes react once they detect their target phenomenon is a
+    behavior which should be defined as a sensor application.  One such
+    application might involve sensor nodes alerting a data collection point via
+    UDP with information about the phenomenon.  The following example
+    illustrates how an application like that would get setup.  Again, $i would
+    represent the node number for the sensor node currently being configured.
+
+        set src_($i) [new Agent/UDP]
+        $ns_ attach-agent $node_($i) $src_($i)
+        $ns_ connect $src_($i) $sink
+
+        set app_($i) [new Application/SensorApp]
+        $app_($i) attach-agent $src_($i)
+
+  o Start the Phenomenon node
+  
+    The Phenomenon node starts emanating immediately once the simulation starts,
+    but the range of it's broadcasts can be reduced to such a small area that
+    it's effectively inaudible to any sensors (unless they occupy the exact same
+    coordinate in the topology as the phenomenon node).  Here's an example of
+    how a phenomenon node can be turned off:
+    
+        $ns_ at 6.0 {[$node_($i) set netif_(0)] set Pt_ 0.0001}
+
+    Pt_ is the range of the broadcast, and $i is the node id of the Phenomenon
+    node.
+
+  o Start the Sensor Application
+  
+    The Sensor node will receive PHENOM packets as soon as the sensor agent is
+    attached to the node.  Since the sensor agent does nothing but notify the
+    sensor application of the event, "I received PHENOM", the sensor node does
+    not visibly react to PHENOM packets until the sensor application has been
+    attached and *started*.  The following example shows how to start a sensor
+    application:
+    
+        $ns_ at 5.0 "$app_($i) start $sensor_($i)"
+
+
+CONCLUSION:
+
+This package contains the foundation code necessary to begin researching sensor 
+networks with ns-2.  Throughout the design, extra effort was taken to maximize
+modularity of new code and minimize the modifications needed in existing ns-2 
+code.  Our code is still under intensive development, and enhancements are
+continuously being added.  Any feedback from people who are trying to use our
+sensor network extensions for their own research would be greatly appreciated at
+<nrlsensorsim@pf.itd.nrl.navy.mil>.  Tweak and enjoy!
+
+BUGS:
+
+No bugs are presently known with the sensor network extensions to ns2, but they
+no doubt exist.  Please direct all bug reports to
+<nrlsensorsim@pf.itd.nrl.navy.mil>.
+
+
+FUTURE WORK:
+
+Much more effort should be made to improve how phenomenon emanates.  Presently,
+it follows the behavior of an 802.11 broadcast, configured with one of the
+following radio propagation models:
+  1. Free Space Model
+  2. Two Ray Ground Model
+  3. Shadowing Model 
+
+The first two models represent the communication range as an ideal circle,
+whose boundary is an absolute limit on signal receivability.  The Shadowing
+model applies a more probabilistic means of determining whether a receiver on
+the boundary can receive the signal.  
+
+The radio propagation model should be extended to create a "phenomenon
+propagation model" which could specifically address the characteristics of
+various phenomenon available for sensor network simulations.
+
+
+REFERENCES:
+
+[1] The Network Simulator - ns-2, http://www.isi.edu/nsnam/ns/
+
+
+--------------------------------- APPENDIX A -----------------------------------
+
+################################################################################
+# AUTHOR: Ian Downard
+# DATE: 28 JAN 2003
+# DESCRIPTION:
+#   This simulation tests the cooperability of NRLOLSR and PHENOM.  This
+# simulation is mostly useful as an example of how transmit power can be 
+# modified during the simulation.  This simulation also shows the backlog
+# of sensor data which exists in the network, since udp traffic (sensor traffic)
+# is still being transmitted to the udp sink even after the phenom node has
+# been turned off (by setting it's transmit power to 0.00001).  It's interesting
+# to see how much longer that udp traffic lingers in the network with AODV as 
+# opposed to NRLOLSR.
+#
+################################################################################
+
+#
+# ======================================================================
+# Define options
+# ======================================================================
+set val(chan)           Channel/WirelessChannel    ;# channel type
+set val(prop)           Propagation/TwoRayGround   ;# radio-propagation model
+set val(netif)          Phy/WirelessPhy            ;# network interface type
+set val(mac)            Mac/802_11                 ;# MAC type
+set val(ifq)            Queue/DropTail/PriQueue    ;# interface queue type
+set val(ll)             LL                         ;# link layer type
+set val(ant)            Antenna/OmniAntenna        ;# antenna model
+set val(ifqlen)         50                         ;# max packet in ifq
+set val(nn)             26                         ;# number of mobilenodes
+set val(rp)             NRLOLSR                    ;# routing protocol
+set val(x)	            451                 ;# grid width
+set val(y)	            451                 ;# grid hieght
+
+Queue/DropTail/PriQueue set Prefer_Routing_Protocols    1
+
+# specify the transmit power
+# (see wireless-shadowing-vis-test.tcl for another example)
+Phy/WirelessPhy set Pt_ 0.1
+
+puts "This is a multi-channel sensor network test program."
+
+# =====================================================================
+# Main Program
+# ======================================================================
+
+#
+# Initialize Global Variables
+#
+
+set ns_		[new Simulator]
+set tracefd [open phenom08.tr w]
+$ns_ trace-all $tracefd
+
+set namtrace [open phenom08.nam w]
+$ns_ namtrace-all-wireless $namtrace $val(x) $val(y)
+
+# set up topography object
+set topo       [new Topography]
+
+$topo load_flatgrid $val(x) $val(y)
+
+#
+# Create God
+#
+#set god_ [create-god $val(nn)]
+set god_ [create-god 27]
+$god_ off
+$god_ allow_to_stop
+$god_ num_data_types 1
+
+#configure phenomenon channel and data channel
+set chan_1_ [new $val(chan)]
+set chan_2_ [new $val(chan)]
+
+# configure phenomenon node with the PHENOM routing protocol
+$ns_ node-config \
+     -adhocRouting PHENOM \
+	 -llType $val(ll) \
+	 -macType $val(mac) \
+	 -ifqType $val(ifq) \
+	 -ifqLen $val(ifqlen) \
+	 -antType $val(ant) \
+	 -propType $val(prop) \
+	 -phyType $val(netif) \
+	 -channel $chan_1_ \
+	 -topoInstance $topo \
+	 -agentTrace ON \
+	 -routerTrace ON \
+	 -macTrace ON \
+	 -movementTrace ON
+
+    set node_(0) [$ns_ node 0]
+    $node_(0) random-motion 0		            ;# disable random motion
+    $god_ new_node $node_(0)
+    $node_(0) namattach $namtrace
+    $ns_ initial_node_pos $node_(0) 25
+    [$node_(0) set ragent_] pulserate .09       ;#configures PHENOM node
+    [$node_(0) set ragent_] phenomenon CO      ;#configures PHENOM node
+
+# configure sensor nodes
+$ns_ node-config \
+     -adhocRouting $val(rp) \
+	 -channel $chan_2_ \
+     -PHENOMchannel $chan_1_                    ;# adds the PHENOM iface
+
+	for {set i 1} {$i < $val(nn) } {incr i} {
+		set node_($i) [$ns_ node]	
+		$node_($i) random-motion 1
+        $god_ new_node $node_($i)
+        $node_($i) namattach $namtrace
+	}
+
+# configure data collection point
+$ns_ node-config \
+     -adhocRouting $val(rp) \
+	 -channel $chan_2_ \
+     -PHENOMchannel "off"                       ;# adds the PHENOM iface
+
+set node_($i) [$ns_ node]	
+$node_($i) random-motion 1
+$god_ new_node $node_($i)
+$node_($i) namattach $namtrace
+
+#
+# Provide initial (X,Y, for now Z=0) co-ordinates for mobilenodes
+#
+
+# node_(0) is the phenominon.
+$node_(0) set X_ 50.0
+$node_(0) set Y_ 50.0
+
+$node_(1) set X_ 1.0
+$node_(1) set Y_ 1.0
+$node_(2) set X_ 1.0
+$node_(2) set Y_ 100.0
+$node_(3) set X_ 1.0
+$node_(3) set Y_ 200.0
+$node_(4) set X_ 1.0
+$node_(4) set Y_ 300.0
+$node_(5) set X_ 1.0
+$node_(5) set Y_ 400.0
+$node_(6) set X_ 100.0
+$node_(6) set Y_ 1.0
+$node_(7) set X_ 100.0
+$node_(7) set Y_ 100.0
+$node_(8) set X_ 100.0
+$node_(8) set Y_ 200.0
+$node_(9) set X_ 100.0
+$node_(9) set Y_ 300.0
+$node_(10) set X_ 100.0
+$node_(10) set Y_ 400.0
+$node_(11) set X_ 200.0
+$node_(11) set Y_ 1.0
+$node_(12) set X_ 200.0
+$node_(12) set Y_ 100.0
+$node_(13) set X_ 200.0
+$node_(13) set Y_ 200.0
+$node_(14) set X_ 200.0
+$node_(14) set Y_ 300.0
+$node_(15) set X_ 200.0
+$node_(15) set Y_ 400.0
+$node_(16) set X_ 300.0
+$node_(16) set Y_ 1.0
+$node_(17) set X_ 300.0
+$node_(17) set Y_ 100.0
+$node_(18) set X_ 300.0
+$node_(18) set Y_ 200.0
+$node_(19) set X_ 300.0
+$node_(19) set Y_ 300.0
+$node_(20) set X_ 300.0
+$node_(20) set Y_ 400.0
+$node_(21) set X_ 400.0
+$node_(21) set Y_ 1.0
+$node_(22) set X_ 400.0
+$node_(22) set Y_ 100.0
+$node_(23) set X_ 400.0
+$node_(23) set Y_ 200.0
+$node_(24) set X_ 400.0
+$node_(24) set Y_ 300.0
+$node_(25) set X_ 400.0
+$node_(25) set Y_ 400.0
+
+# node_(26) is the data collection point
+$node_(26) set X_ 450.0
+$node_(26) set Y_ 450.0
+
+$ns_ at .01 "$node_(0) color blue"
+
+#set dest format is "setdest <x> <y> <speed>"
+
+# node_(0) is the phenominon.
+$ns_ at 0.01 "$node_(0) setdest 50.0 50.0 50.0"
+$ns_ at 5.0 "$node_(0) setdest 350.0 350.0 300.0"
+$ns_ at 6.0 "$node_(0) setdest 1.0 350.0 600.0"
+$ns_ at 7.0 "$node_(0) setdest 50.0 50.0 600.0"
+
+$ns_ at 0.01 "$node_(1) setdest 1.0 1.0 50.0"
+$ns_ at 0.01 "$node_(2) setdest 1.0 100.0 50.0"
+$ns_ at 0.01 "$node_(3) setdest 1.0 200.0 50.0"
+$ns_ at 0.01 "$node_(4) setdest 1.0 300.0 50.0"
+$ns_ at 0.01 "$node_(5) setdest 1.0 400.0 50.0"
+$ns_ at 0.01 "$node_(6) setdest 100.0 1.0 50.0"
+$ns_ at 0.01 "$node_(7) setdest 100.0 100.0 50.0"
+$ns_ at 0.01 "$node_(8) setdest 100.0 200.0 50.0"
+$ns_ at 0.01 "$node_(9) setdest 100.0 300.0 50.0"
+$ns_ at 0.01 "$node_(10) setdest 100.0 400.0 50.0"
+$ns_ at 0.01 "$node_(11) setdest 200.0 1.0 50.0"
+$ns_ at 0.01 "$node_(12) setdest 200.0 100.0 50.0"
+$ns_ at 0.01 "$node_(13) setdest 200.0 200.0 50.0"
+$ns_ at 0.01 "$node_(14) setdest 200.0 300.0 50.0"
+$ns_ at 0.01 "$node_(15) setdest 200.0 400.0 50.0"
+$ns_ at 0.01 "$node_(16) setdest 300.0 1.0 50.0"
+$ns_ at 0.01 "$node_(17) setdest 300.0 100.0 50.0"
+$ns_ at 0.01 "$node_(18) setdest 300.0 200.0 50.0"
+$ns_ at 0.01 "$node_(19) setdest 300.0 300.0 50.0"
+$ns_ at 0.01 "$node_(20) setdest 300.0 400.0 50.0"
+$ns_ at 0.01 "$node_(21) setdest 400.0 1.0 50.0"
+$ns_ at 0.01 "$node_(22) setdest 400.0 100.0 50.0"
+$ns_ at 0.01 "$node_(23) setdest 400.0 200.0 50.0"
+$ns_ at 0.01 "$node_(24) setdest 400.0 300.0 50.0"
+$ns_ at 0.01 "$node_(25) setdest 400.0 400.0 50.0"
+$ns_ at 0.01 "$node_(26) setdest 450.0 450.0 50.0"
+
+
+###############################################################################
+# Attach the sensor agent to the sensor node, and build a conduit thru which
+# received PHENOM packets will reach the sensor agent's recv routine.
+
+# attach a Sensor Agent (i.e. sensor agent) to sensor node
+for {set i 1} {$i < $val(nn) } {incr i} {
+  set sensor_($i) [new Agent/SensorAgent]
+  $ns_ attach-agent $node_($i) $sensor_($i)
+  
+  # specify the sensor agent as the up-target for the sensor node's link layer
+  # configured on the PHENOM interface, so that the sensor agent handles the 
+  # received PHENOM packets instead of any other agent attached to the node.
+  #
+  [$node_($i) set ll_(1)] up-target $sensor_($i)
+}
+
+###############################################################################
+
+# setup UDP connections to data collection point, and attach sensor apps
+set sink [new Agent/UDP]
+$ns_ attach-agent $node_(26) $sink
+for {set i 1} {$i < $val(nn) } {incr i} {
+  set src_($i) [new Agent/UDP]
+  $ns_ attach-agent $node_($i) $src_($i)
+  $ns_ connect $src_($i) $sink
+  
+  set app_($i) [new Application/SensorApp]
+  $app_($i) attach-agent $src_($i)
+}
+
+for {set i 1} {$i < $val(nn) } {incr i} {
+  $ns_ at 5.0 "$app_($i) start $sensor_($i)"
+}
+
+# disable phenomenon
+#
+$ns_ at 6.0 {[$node_(0) set netif_(0)] set Pt_ 0.0001}
+
+# enable phenomenon
+#
+# $ns_ at 8.0 {[$node_(0) set netif_(0)] set Pt_ 0.1}
+
+#Tell nodes when the simulation ends
+#
+for {set i 0} {$i < $val(nn) } {incr i} {
+  $ns_ at 20.0 "$node_($i) reset";
+}  
+
+$ns_ at 20.0 "stop"
+$ns_ at 20.1 "puts \"NS EXITING...\" ; $ns_ halt"
+
+proc stop {} {
+    global ns_ tracefd namtrace
+    $ns_ flush-trace
+    close $tracefd
+    close $namtrace
+}
+
+#Begin command line parsing
+
+puts "Starting Simulation..."
+$ns_ run
+
+
+----------------------------- End of Appendix A --------------------------------
+</PRE>
